@@ -1,0 +1,215 @@
+# IntelliSense for AI-prompt documents
+
+## Scope and evidence
+
+This document describes the repository's implemented language-server behavior for prompt-oriented Markdown. The authoritative implementation is the dependency-free Node.js server in `lsp/prompt-lsp.mjs`; `src/lib.rs` embeds that exact script in the extension binary and launches it with a workspace path. Editor-specific APIs are intentionally out of scope.
+
+Unless a paragraph is explicitly marked **Inferred intent**, the behavior below is directly supported by the current source. The server reports version 0.3.4.
+
+## Capability summary
+
+For recognized prompt documents, the server provides two completion domains:
+
+- workspace-relative file and folder references beginning with `@`, such as `@src/lib.rs`;
+- references to ATX headings in the same document, such as `[Review > Style]`.
+
+It also provides hover and go-to-definition for both reference types. Existing and missing references are classified through semantic tokens, but this is visual classification rather than LSP diagnostics. There is no signature help, completion-item resolve step, diagnostic publication, code action, rename, references search, document symbols, or incremental semantic-token support.
+
+The server advertises full-document synchronization, completion triggers `@`, `/`, and `[`, hover, definition, and full-document semantic tokens. A client can also request completion manually; the server's context detector, rather than the trigger character alone, decides whether results are returned.
+
+## Where the features are active
+
+IntelliSense is gated by the document URI's case-insensitive filename. It is active for:
+
+- `prompt.md` and `prompts.md`;
+- names ending in `.prompt.md` or `.prompts.md`;
+- names ending in `.prompt`.
+
+A URI that cannot be converted to a local file path is not recognized as a prompt document. Completion, hover, and definition then return no result. Reference semantic tokens are likewise restricted to prompt documents.
+
+This filename check is independent of a client's language identifier. Consequently, merely assigning the prompt language to an ordinary `notes.md` URI does not enable these IntelliSense features, while a matching filename does.
+
+## Text and position model
+
+On `didOpen`, the complete text is stored in an in-memory map keyed by URI. On every `didChange`, only the first content change is read, and its `text` is treated as the new complete document. This matches the server's advertised full-sync mode; incremental edits are not supported. `didClose` removes the cached text.
+
+For a request, cached text wins. If no cached text exists, the server attempts a synchronous UTF-8 read from the URI's local path. Conversion or read failure silently produces an empty document. Lines are split on either LF or CRLF. JavaScript string indices are used throughout, which means characters and ranges are measured in UTF-16 code units—the LSP default position encoding.
+
+All parsing is lightweight, line-oriented scanning. The server does not consume the repository's Tree-sitter parse tree. Syntax highlighting is therefore only an integration boundary: it does not determine completion or reference resolution contexts.
+
+## File-reference parsing and context detection
+
+### Completed references
+
+Hover, definition, and semantic classification recognize this effective pattern:
+
+```text
+(^|non-word-character) @ [A-Za-z0-9._~+/-]+
+```
+
+The `@` is included in the reference range. At least one path character must follow it. A word character immediately before `@` prevents recognition, which avoids treating the `@` in a typical ASCII email address as a reference. The allowed path alphabet excludes whitespace, backslashes, colons, query/hash punctuation, and non-ASCII filename characters. Punctuation outside that alphabet terminates a reference.
+
+The cursor is considered on a reference from its `@` through its end, inclusively. As a result, a request positioned immediately after the last path character can still resolve the token.
+
+### Completion context
+
+For completion, only the current line before the cursor is inspected:
+
+1. Find the last `@` before the cursor.
+2. Reject it if its immediately preceding character is an ASCII-style word character.
+3. Treat all text from that `@` to the cursor as the prefix.
+4. Reject the context if any prefix character is outside `[A-Za-z0-9._~+/-]`.
+
+The replacement range starts after `@` and ends at the cursor, so accepting a result preserves the typed `@`. An empty prefix immediately after `@` is valid.
+
+The `/` trigger does not independently create a context. It causes a client request while extending a valid `@...` prefix. Likewise, requests made after ordinary path characters can produce results if the client invokes or refreshes completion, even though those characters are not advertised LSP triggers.
+
+## Workspace file index
+
+File candidates are generated by a synchronous breadth-first traversal rooted at the configured workspace. The workspace normally comes from the `--workspace` process argument. Without that argument, initialization may replace the initial current-working-directory root with `rootUri`, or with the first workspace folder if no `rootUri` is supplied.
+
+The index contains both files and directories and records each entry's normalized forward-slash relative path, basename, directory status, and depth. A directory's insertion text has a trailing slash. Directory entries are traversed before files and then by locale-aware name order within each parent.
+
+The scanner does not descend into directories whose basename exactly matches one of:
+
+```text
+.git .hg .svn .vs .vscode .idea .next .nuxt .svelte-kit .turbo
+bin build coverage dist node_modules obj out target vendor
+```
+
+These comparisons are case-sensitive, including on Windows. Exclusion applies only to directories; a file with one of those names remains eligible. Symbolic links are not treated as directories by the `Dirent.isDirectory()` check, so they may appear as file-like candidates but are not traversed. Directory read errors are swallowed and that subtree is skipped.
+
+The index is reused for 2 seconds. It is not invalidated by document changes or filesystem notifications. A newly created, deleted, or renamed path can therefore remain absent or stale until the TTL expires. A rebuild stops after 50,000 indexed entries and marks the result truncated.
+
+## File candidate filtering and ranking
+
+Prefix matching is case-insensitive. Each indexed entry receives the first applicable score:
+
+1. **0:** full insertion path starts with the prefix;
+2. **1:** if the prefix contains no slash, basename starts with it;
+3. **2:** the relative path contains `/<prefix>` (a path-component start);
+4. **3:** relative path contains the prefix anywhere;
+5. otherwise the entry is excluded.
+
+With an empty prefix, the score is the entry depth. Server-side candidates are sorted by score, then folders before files, then shallower depth, then insertion path using locale comparison. At most 500 are returned. `isIncomplete` is true when more than 500 entries matched or when the 50,000-entry index was truncated.
+
+There is an important client-facing qualification: each file item also supplies `sortText` in the form `folder-or-file_depth_path`. That string prioritizes all folders over files, then depth and path, and does **not** encode the relevance score above. An LSP client that obeys `sortText` may therefore display a different order from the server's pre-sorted array. File items do not supply `filterText`; client-side filtering may use their display labels.
+
+Display labels show the complete path when it has at most two components. Deeper paths are shortened to `../<last-two-components>` for display only. Insertion always uses the complete workspace-relative path. This shortening can interact poorly with clients that filter solely against `label`, particularly when the user typed an earlier path component.
+
+## File insertion and resolution
+
+A file item is marked as file or folder, has detail text `file` or `folder`, and uses a plain text edit—not a snippet. The edit replaces only the prefix after `@` through the cursor with the full relative path. Folder text ends in `/`, allowing a follow-up completion request as the path is continued.
+
+All file references resolve relative to the workspace root, never relative to the containing prompt document. Normalization converts backslashes to slashes, removes one leading `@`, and removes all leading slashes. Resolution rejects NULs, absolute paths after normalization, and lexically resolved paths outside the workspace. Therefore `..` is permitted syntactically but cannot escape the root; an escaping reference is treated as missing. Leading `/` does not mean filesystem root—it is stripped and interpreted under the workspace.
+
+Existence is checked synchronously with `stat`, so both regular files and directories count. `stat` follows symbolic links; the lexical workspace containment check does not resolve a link's real target. A symlink located inside the workspace can therefore refer indirectly outside it.
+
+Hover over an existing reference reports the literal reference, whether the target is a `folder` or `file`, and its absolute path. Any existing non-directory filesystem object is described as a file. Missing or rejected paths report “Missing file or folder in workspace.” Definition returns the target URI at the zero-length range `(0,0)`; missing references return no definition. A directory can also be returned as a definition target, leaving handling to the client.
+
+## Heading parsing and hierarchy
+
+Only ATX headings are indexed. A valid heading has zero to three leading spaces, one to six `#` characters, and then horizontal whitespace or end of line. Empty headings are discarded. Setext headings are not part of IntelliSense even if another layer highlights them.
+
+Optional closing hash sequences are removed only when preceded by whitespace and followed by optional trailing whitespace. Remaining trailing whitespace is removed; the heading's logical text is then trimmed. Matching and insertion use this plain textual content—Markdown inline formatting is not decoded or stripped.
+
+The scanner maintains a six-level stack. A heading at level *N* truncates the stack to *N − 1*, stores its text at level *N*, filters out missing levels, and joins the result with ` > `. For example, `# Parent` followed directly by `### Child` produces `Parent > Child`, not an invalid hierarchy. A later heading replaces the stack at its level and removes deeper descendants.
+
+Fenced regions are skipped by a small state machine. A line beginning with up to three spaces and at least three backticks or tildes opens a fence. A later line with the same marker character and at least the opening length closes it. Both marker lines are skipped. This is not a complete Markdown fence parser: it does not validate trailing closing-fence content and does not account for all container constructs.
+
+Each indexed heading records its zero-based line and its full line span for definition, plus marker/content spans used by semantic-token integration.
+
+## Heading-reference parsing and resolution
+
+A completed heading reference is any same-line `[non-empty text without a closing bracket]`, except:
+
+- `[x]` and `[X]` after trimming, to avoid task-list markers;
+- a bracket immediately preceded by `!`, to avoid images;
+- a closing bracket immediately followed by `(`, to avoid inline Markdown links.
+
+The complete bracketed form is the hover/semantic range. Escaping, inline code, fenced code, reference-link definitions, and other Markdown constructs are not consulted. Thus bracket-shaped text in those contexts may be treated as a heading reference. File references take precedence when hover or definition finds an `@` token at the cursor. During semantic classification, a heading-reference range overlapping a file-reference range is skipped.
+
+A reference path is normalized by splitting on `>`, trimming every component, dropping empty components, and rejoining with ` > `. It resolves only when that normalized string is exactly equal, case-sensitively, to a heading's complete hierarchical path. There is no slug generation or leaf-name fallback: `[Child]` does not resolve a nested `Parent > Child`; it must be written as `[Parent > Child]`. Inline Markdown formatting must also match literally.
+
+Duplicate exact paths are allowed. Hover reports the first matching heading and notes the number of matches; definition jumps to the first in document order. A missing reference has hover text saying it is missing and has no definition.
+
+## Heading completion lifecycle
+
+Heading completion is considered before file completion. On the current line before the cursor, the detector finds the last `[`. It rejects the context if a `]` occurs after that opening bracket before the cursor, if `!` immediately precedes `[`, or if another `[` is present in the extracted prefix. In practice, this is lexical rather than Markdown-aware. An unfinished inline link can offer heading candidates, and an `@` inside an unfinished bracket expression remains in heading context rather than file context.
+
+All headings in the current document are rescanned for every heading completion request. Prefix normalization uses the same `>` component trimming as resolution, but filtering is case-insensitive:
+
+1. full hierarchical path starts with the prefix;
+2. leaf heading text starts with the prefix;
+3. full path contains the prefix;
+4. otherwise exclude.
+
+With no prefix, score equals heading level, so shallower headings come first. Candidates are sorted by score, then source line, then path text. Up to 500 are returned; more matches set `isIncomplete`. The item's sequential `sortText` preserves this computed ordering in conforming clients. Its label, insertion text, and filter text are the complete hierarchical path; detail reports the one-based source line.
+
+The text edit replaces content after `[` through the cursor. If the character exactly at the cursor is `]`, only the heading path is inserted, preserving that bracket. Otherwise the edit appends `]`. It does not search farther right for a closing bracket, so a non-adjacent existing bracket may result in an extra `]`. The opening bracket is always preserved. Items are plain text and have no placeholders or follow-up resolve operation.
+
+Completion matching is more permissive than final resolution: case-insensitive candidate discovery can insert the heading's canonical case, while manually typed references still resolve case-sensitively.
+
+## Hover, definition, semantic status, and absent features
+
+Hover and definition repeat parsing against the latest complete document text; there is no persistent heading model. Hover returns Markdown content and a precise reference range. Heading definitions use the same document URI and the entire target heading line. File definitions use the target URI at `(0,0)`.
+
+The server does **not** publish LSP diagnostics. Missing-file and missing-heading status is instead recomputed during each full semantic-token request using synchronous filesystem stats and heading resolution. Existing and missing references receive distinct custom token types. These tokens are also segmented around broader heading/list presentation tokens so ranges do not overlap. This is the only relevant boundary with visual styling; it must not be mistaken for a diagnostic because there is no severity, diagnostic message, problems-list entry, or fix.
+
+There is no signature-help provider or call-expression parser. There are also no completion docs beyond `detail`, no lazy completion resolution (`resolveProvider` is false), and no cross-document heading links.
+
+## State and request flow
+
+A typical completion path is:
+
+1. initialization chooses the workspace and advertises capabilities;
+2. open/change notifications update the full-text document map;
+3. a trigger or manual client action sends a completion request;
+4. the server verifies the URI filename and extracts the requested line;
+5. heading context is attempted first, then file context;
+6. headings are rescanned or the workspace index is obtained/rebuilt;
+7. candidates are filtered, sorted, capped, and assigned replacement edits;
+8. a complete or incomplete completion list is returned.
+
+The process is single-threaded and uses synchronous filesystem calls. Large uncached workspaces can block all protocol handling during index construction. The global workspace index is shared by all documents handled by that server process.
+
+Protocol messages use standard `Content-Length` framing over stdin/stdout. Malformed JSON is logged to stderr and receives no response because its request ID cannot be recovered. A framed request whose handler throws receives JSON-RPC error `-32603`; unknown requests receive `-32601`. Unknown notifications are ignored. A header without `Content-Length` is discarded through its header terminator. Shutdown returns `null`; the process exits only on a later `exit` notification.
+
+## Edge cases and limitations
+
+- Parsing is lexical, not AST-aware. References can activate in code spans, fenced code, comments, link definitions, or other Markdown regions.
+- Heading discovery does skip its simplified fenced regions, but heading-reference discovery does not.
+- Only local `file:` URIs and filesystem workspaces work reliably.
+- File paths are ASCII-limited in source syntax and always workspace-relative; spaces, `\`, drive prefixes, and Unicode names cannot be typed as valid references.
+- File matching is case-insensitive, while actual existence follows the host filesystem's rules. A differently cased suggestion/query can therefore appear to match but fail on a case-sensitive filesystem unless the inserted canonical candidate is accepted.
+- Heading completion is case-insensitive, but heading resolution is case-sensitive.
+- Exact duplicate heading paths are ambiguous and always resolve to the first.
+- A stale 2-second workspace cache, unreadable directories, or the 50,000-entry cap can hide valid candidates. Direct hover/definition can still find an unindexed path because they call `stat` independently.
+- Only 500 candidates are returned per domain. `isIncomplete` asks the client to request again, but the server does not maintain continuation state; it simply refilters and returns the first 500 for the new prefix.
+- Heading and file scans are synchronous. Heading scanning is repeated across completion, hover/definition, and semantic requests rather than cached.
+- Full-sync assumptions mean an incremental-only client's change payload would replace the cache with only the changed fragment and corrupt subsequent results.
+- Invalid or out-of-range line positions yield an empty line and generally no context. Character positions beyond a line are tolerated by JavaScript slicing rather than explicitly validated.
+- Excluded directory names and filename gating have platform-sensitive corner cases as described above.
+
+## How to replicate the capability elsewhere
+
+The most faithful portable implementation is an LSP-compatible process with the following components:
+
+1. **Document store:** key full document text by URI; negotiate full synchronization and use UTF-16 positions.
+2. **Activation predicate:** apply the exact filename suffix rules before prompt-specific completion, hover, definition, and reference classification.
+3. **Workspace resolver:** normalize `/`-separated references, root them at one workspace, perform a lexical containment check, and use filesystem `stat` for existence.
+4. **Workspace index:** breadth-first scan files and folders, honor the exact excluded-directory set, cache for 2 seconds, stop at 50,000 entries, and retain path/basename/depth/type.
+5. **File context and candidates:** detect the last valid `@` run, use the four-tier case-insensitive score, apply the ordering and 500-item cap, and replace only text after `@`.
+6. **Heading model:** line-scan ATX headings outside simplified fences, maintain the level stack, and produce exact ` > ` hierarchy paths.
+7. **Heading references:** apply the bracket exclusions, normalize separators, resolve exact case-sensitive full paths, and choose the first duplicate.
+8. **Heading candidates:** score path-prefix, leaf-prefix, then path-substring case-insensitively; insert a closing bracket only when one is not immediately at the cursor.
+9. **Navigation and status:** return Markdown hover text and definition locations; expose missing status separately. To reproduce this repository exactly, use semantic token classes rather than diagnostics.
+10. **Protocol lifecycle:** advertise triggers `@`, `/`, `[`, no completion resolve, full semantic tokens only, and process open/change/close before requests.
+
+A non-LSP editor can use the same algorithms directly, but it must preserve the same workspace-root semantics, UTF-16 range calculations, replacement spans, candidate caps, and precedence (heading completion before file completion; file token before heading reference for hover/definition) to behave identically.
+
+## Implemented behavior versus inferred intent
+
+**Implemented:** every parsing rule, score, cap, edit range, cache rule, navigation result, and failure behavior documented above is present in `lsp/prompt-lsp.mjs`; script embedding is present in `src/lib.rs`.
+
+**Inferred intent:** the README calls bracket references “Obsidian-style” and describes completion as “ranked by relevance.” That wording communicates the product goal, but the implementation is a custom exact hierarchy-path system rather than full Obsidian link semantics, and client use of file-item `sortText` can override the server's relevance ordering. The README also says missing references “light up red”; the substantiated mechanism is semantic-token styling, not diagnostics. No broader AI understanding, prompt-schema validation, model awareness, or natural-language inference is implemented.

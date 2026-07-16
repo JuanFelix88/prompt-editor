@@ -1,0 +1,280 @@
+package editor
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/rivo/uniseg"
+
+	"github.com/juanandrade/prompt-cli/internal/lang"
+)
+
+type Buffer struct {
+	Path     string
+	Lines    [][]rune
+	Row, Col int
+	Dirty    bool
+	Version  uint64
+}
+
+func Load(path string) (*Buffer, error) {
+	b := &Buffer{Path: path, Lines: [][]rune{{}}}
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err == nil {
+		text := strings.ReplaceAll(string(data), "\r\n", "\n")
+		parts := strings.Split(text, "\n")
+		b.Lines = make([][]rune, len(parts))
+		for i, p := range parts {
+			b.Lines[i] = []rune(p)
+		}
+	}
+	return b, nil
+}
+func (b *Buffer) Text() string {
+	parts := make([]string, len(b.Lines))
+	for i, l := range b.Lines {
+		parts[i] = string(l)
+	}
+	return strings.Join(parts, "\n")
+}
+func (b *Buffer) touch() { b.Dirty = true; b.Version++ }
+func (b *Buffer) InsertRune(r rune) {
+	line := b.Lines[b.Row]
+	line = append(line, 0)
+	copy(line[b.Col+1:], line[b.Col:])
+	line[b.Col] = r
+	b.Lines[b.Row] = line
+	b.Col++
+	b.touch()
+}
+func (b *Buffer) CurrentRune() (rune, bool) {
+	line := b.Lines[b.Row]
+	if b.Col >= len(line) {
+		return 0, false
+	}
+	return line[b.Col], true
+}
+func (b *Buffer) InsertPair(open, close rune) { b.InsertRune(open); b.InsertRune(close); b.Left() }
+func (b *Buffer) EmptyPairAtCaret() bool {
+	if b.Col == 0 || b.Col >= len(b.Lines[b.Row]) {
+		return false
+	}
+	left, right := b.Lines[b.Row][b.Col-1], b.Lines[b.Row][b.Col]
+	return left == '(' && right == ')' || left == '[' && right == ']' || left == '{' && right == '}' || left == '"' && right == '"' || left == '\'' && right == '\'' || left == '`' && right == '`'
+}
+
+func (b *Buffer) InsertText(s string) {
+	for _, r := range s {
+		if r == '\n' {
+			b.Newline()
+		} else if r == '\t' || r >= 32 && r != 127 {
+			b.InsertRune(r)
+		}
+	}
+}
+func (b *Buffer) Newline() {
+	line := b.Lines[b.Row]
+	tail := append([]rune(nil), line[b.Col:]...)
+	b.Lines[b.Row] = line[:b.Col]
+	b.Lines = append(b.Lines, nil)
+	copy(b.Lines[b.Row+2:], b.Lines[b.Row+1:])
+	b.Lines[b.Row+1] = tail
+	b.Row++
+	b.Col = 0
+	b.touch()
+}
+func graphemeBounds(rs []rune) []int {
+	g := uniseg.NewGraphemes(string(rs))
+	out := []int{0}
+	n := 0
+	for g.Next() {
+		n += len([]rune(g.Str()))
+		out = append(out, n)
+	}
+	return out
+}
+func previousBound(rs []rune, col int) int {
+	prev := 0
+	for _, n := range graphemeBounds(rs) {
+		if n >= col {
+			return prev
+		}
+		prev = n
+	}
+	return prev
+}
+func nextBound(rs []rune, col int) int {
+	for _, n := range graphemeBounds(rs) {
+		if n > col {
+			return n
+		}
+	}
+	return len(rs)
+}
+func (b *Buffer) Backspace() {
+	if b.Col > 0 {
+		line := b.Lines[b.Row]
+		p := previousBound(line, b.Col)
+		b.Lines[b.Row] = append(line[:p], line[b.Col:]...)
+		b.Col = p
+		b.touch()
+		return
+	}
+	if b.Row > 0 {
+		prev := len(b.Lines[b.Row-1])
+		b.Lines[b.Row-1] = append(b.Lines[b.Row-1], b.Lines[b.Row]...)
+		b.Lines = append(b.Lines[:b.Row], b.Lines[b.Row+1:]...)
+		b.Row--
+		b.Col = prev
+		b.touch()
+	}
+}
+func (b *Buffer) Delete() {
+	line := b.Lines[b.Row]
+	if b.Col < len(line) {
+		n := nextBound(line, b.Col)
+		b.Lines[b.Row] = append(line[:b.Col], line[n:]...)
+		b.touch()
+		return
+	}
+	if b.Row+1 < len(b.Lines) {
+		b.Lines[b.Row] = append(line, b.Lines[b.Row+1]...)
+		b.Lines = append(b.Lines[:b.Row+1], b.Lines[b.Row+2:]...)
+		b.touch()
+	}
+}
+func (b *Buffer) Left() {
+	if b.Col > 0 {
+		b.Col = previousBound(b.Lines[b.Row], b.Col)
+	} else if b.Row > 0 {
+		b.Row--
+		b.Col = len(b.Lines[b.Row])
+	}
+}
+func (b *Buffer) Right() {
+	if b.Col < len(b.Lines[b.Row]) {
+		b.Col = nextBound(b.Lines[b.Row], b.Col)
+	} else if b.Row+1 < len(b.Lines) {
+		b.Row++
+		b.Col = 0
+	}
+}
+func (b *Buffer) Up() {
+	if b.Row > 0 {
+		b.Row--
+		if b.Col > len(b.Lines[b.Row]) {
+			b.Col = len(b.Lines[b.Row])
+		}
+		b.Col = previousOrEqual(b.Lines[b.Row], b.Col)
+	}
+}
+func (b *Buffer) Down() {
+	if b.Row+1 < len(b.Lines) {
+		b.Row++
+		if b.Col > len(b.Lines[b.Row]) {
+			b.Col = len(b.Lines[b.Row])
+		}
+		b.Col = previousOrEqual(b.Lines[b.Row], b.Col)
+	}
+}
+func previousOrEqual(rs []rune, col int) int {
+	last := 0
+	for _, n := range graphemeBounds(rs) {
+		if n > col {
+			return last
+		}
+		last = n
+	}
+	return last
+}
+
+func utf16RuneIndex(rs []rune, units int) int {
+	u := 0
+	for i, r := range rs {
+		w := 1
+		if r > 0xffff {
+			w = 2
+		}
+		if u+w > units {
+			return i
+		}
+		u += w
+		if u == units {
+			return i + 1
+		}
+	}
+	return len(rs)
+}
+func (b *Buffer) ApplyCompletion(c lang.Completion) {
+	if c.TextEdit.Range.Start.Line != b.Row || c.TextEdit.Range.End.Line != b.Row {
+		return
+	}
+	line := b.Lines[b.Row]
+	start := utf16RuneIndex(line, c.TextEdit.Range.Start.Character)
+	end := utf16RuneIndex(line, c.TextEdit.Range.End.Character)
+	insert := []rune(c.TextEdit.NewText)
+	next := make([]rune, 0, len(line)-end+start+len(insert))
+	next = append(next, line[:start]...)
+	next = append(next, insert...)
+	next = append(next, line[end:]...)
+	b.Lines[b.Row] = next
+	b.Col = start + len(insert)
+	b.touch()
+}
+
+func (b *Buffer) Save() error {
+	dir := filepath.Dir(b.Path)
+	tmp, err := os.CreateTemp(dir, ".prompt-cli-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	ok := false
+	defer func() {
+		tmp.Close()
+		if !ok {
+			os.Remove(name)
+		}
+	}()
+	if info, e := os.Stat(b.Path); e == nil {
+		_ = tmp.Chmod(info.Mode())
+	}
+	if _, err = tmp.WriteString(b.Text()); err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(name, b.Path)
+	}
+	if err != nil {
+		return err
+	}
+	ok = true
+	b.Dirty = false
+	return nil
+}
+
+func (b *Buffer) SetPosition(line, column int) {
+	if line < 1 {
+		line = 1
+	}
+	if line > len(b.Lines) {
+		line = len(b.Lines)
+	}
+	b.Row = line - 1
+	if column < 1 {
+		column = 1
+	}
+	b.Col = column - 1
+	if b.Col > len(b.Lines[b.Row]) {
+		b.Col = len(b.Lines[b.Row])
+	}
+	b.Col = previousOrEqual(b.Lines[b.Row], b.Col)
+}
