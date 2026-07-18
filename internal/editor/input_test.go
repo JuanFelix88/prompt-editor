@@ -31,6 +31,34 @@ func TestDecoderPreservesCharacterAfterEscape(t *testing.T) {
 		t.Fatalf("flush=%#v", keys)
 	}
 }
+func TestWordDeleteAndCtrlEnterSequences(t *testing.T) {
+	d := new(inputDecoder)
+	keys := d.Feed([]byte{23, 0x1b, 127})
+	if len(keys) != 2 || keys[0].Kind != KeyDeleteWord || keys[1].Kind != KeyDeleteWord {
+		t.Fatalf("word keys=%#v", keys)
+	}
+	d = new(inputDecoder)
+	keys = d.Feed([]byte{8})
+	if len(keys) != 1 || keys[0].Kind != KeyBackspace {
+		t.Fatalf("ambiguous BS key=%#v", keys)
+	}
+	d = new(inputDecoder)
+	keys = d.Feed([]byte("\x1b[27;5;127~"))
+	if len(keys) != 1 || keys[0].Kind != KeyDeleteWord {
+		t.Fatalf("xterm word key=%#v", keys)
+	}
+	d = new(inputDecoder)
+	keys = d.Feed([]byte("\x1b[13;5u\x1b[27;5;13~"))
+	if len(keys) != 2 || keys[0].Kind != KeyInsertLineBelow || keys[1].Kind != KeyInsertLineBelow {
+		t.Fatalf("ctrl-enter keys=%#v", keys)
+	}
+	d = new(inputDecoder)
+	keys = d.Feed([]byte{'\n'})
+	if len(keys) != 1 || keys[0].Kind != KeyInsertLineBelow {
+		t.Fatalf("LF key=%#v", keys)
+	}
+}
+
 func TestStartInputEmitsBeforeEOF(t *testing.T) {
 	keys, errs := startInput(bytes.NewBufferString("a"))
 	if key := <-keys; key.Kind != KeyRune || key.Rune != 'a' {

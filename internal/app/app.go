@@ -45,19 +45,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "prompt-cli: expected at most one file")
 		return 2
 	}
-	path := "prompt.md"
-	if fs.NArg() == 1 {
+	anonymous := fs.NArg() == 0
+	path := ""
+	if !anonymous {
 		path = fs.Arg(0)
 	}
 	if *gotoMode {
+		if anonymous {
+			fmt.Fprintln(stderr, "prompt-cli: --goto requires a file")
+			return 2
+		}
 		path, *line, *column = parseGoto(path, *line, *column)
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		fmt.Fprintln(stderr, "prompt-cli:", err)
-		return 1
-	}
 	root := *workspace
+	var err error
 	if root == "" {
 		root, err = os.Getwd()
 	} else {
@@ -67,9 +68,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "prompt-cli:", err)
 		return 1
 	}
-	e, err := editor.New(abs, root, *line, *column)
+	var e *editor.Editor
+	if anonymous {
+		e, err = editor.NewUntitled(root, *line, *column)
+	} else {
+		var abs string
+		abs, err = filepath.Abs(path)
+		if err == nil {
+			e, err = editor.New(abs, root, *line, *column)
+		}
+	}
+	output := ""
 	if err == nil {
-		err = e.Run()
+		output, err = e.Run()
 	}
 	if errors.Is(err, editor.ErrCancelled) {
 		return 130
@@ -78,7 +89,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "prompt-cli:", err)
 		return 1
 	}
+	if anonymous {
+		if writeErr := writeOutput(stdout, output); writeErr != nil {
+			fmt.Fprintln(stderr, "prompt-cli: write output:", writeErr)
+			return 1
+		}
+	}
 	return 0
+}
+
+func writeOutput(w io.Writer, text string) error {
+	n, err := io.WriteString(w, text)
+	if err != nil {
+		return err
+	}
+	if n != len(text) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func runLSP(args []string, stderr io.Writer) int {
@@ -136,5 +164,6 @@ Usage:
   prompt-cli lsp [--workspace DIR]
   prompt-cli version
 
-Inside the editor: Ctrl+S saves/confirms, Ctrl+X cancels, Ctrl+Space completes.`)
+Without FILE, Ctrl+S returns Markdown on stdout without writing to disk.
+Inside the editor: Ctrl+S confirms, Ctrl+X/Ctrl+C asks before canceling, Ctrl+Space completes.`)
 }

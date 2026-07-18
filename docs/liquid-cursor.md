@@ -15,7 +15,7 @@ CSI <linha>;<coluna> H
 CSI ? 25 h
 ```
 
-O cálculo inclui gutter, scroll horizontal, tabs, graphemes, combining marks, emoji e largura CJK. O cursor é reposicionado após input, completion, scroll, resize e análise assíncrona. A posição é limitada à grade válida.
+O cálculo inclui gutter, scroll horizontal, tabs, graphemes, combining marks, emoji e largura CJK. Durante a confirmação de cancelamento, o cursor real muda para o fim da pergunta; ao fechá-la, volta ao caret. O cursor é reposicionado após input, completion, scroll, resize e análise assíncrona. A posição é limitada à grade válida.
 
 Em terminais Unix, `Ctrl+Z` restaura tela/raw mode antes de `SIGTSTP`; depois de `SIGCONT`, o app reentra em raw/alternate screen e redesenha o caret.
 

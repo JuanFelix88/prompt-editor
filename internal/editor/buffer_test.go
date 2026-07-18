@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,9 +50,101 @@ func TestAutoPairAndBackspace(t *testing.T) {
 	}
 }
 
+func TestDeleteWordBackward(t *testing.T) {
+	b := &Buffer{Lines: [][]rune{[]rune("olá mundo")}, Col: 9}
+	b.DeleteWordBackward()
+	if b.Text() != "olá " || b.Col != 4 {
+		t.Fatalf("text=%q col=%d", b.Text(), b.Col)
+	}
+	b.DeleteWordBackward()
+	if b.Text() != "" || b.Col != 0 {
+		t.Fatalf("second delete text=%q col=%d", b.Text(), b.Col)
+	}
+	b = &Buffer{Lines: [][]rune{[]rune("go ✈️")}, Col: len([]rune("go ✈️"))}
+	b.DeleteWordBackward()
+	if b.Text() != "go " {
+		t.Fatalf("grapheme split: %q", b.Text())
+	}
+}
+
+func TestInsertLineBelowPreservesFocusedLine(t *testing.T) {
+	b := &Buffer{Lines: [][]rune{[]rune("  keep this"), []rune("next")}, Row: 0, Col: 6}
+	b.InsertLineBelow()
+	if got := b.Text(); got != "  keep this\n  \nnext" {
+		t.Fatalf("text=%q", got)
+	}
+	if b.Row != 1 || b.Col != 2 {
+		t.Fatalf("row=%d col=%d", b.Row, b.Col)
+	}
+}
+
+func TestCancelRequiresConfirmation(t *testing.T) {
+	e := &Editor{buffer: &Buffer{Lines: [][]rune{{}}}}
+	if _, _, exit := e.handle(Key{Kind: KeyCancel}); exit != 0 || !e.confirmCancel {
+		t.Fatalf("first cancel exited=%d confirm=%v", exit, e.confirmCancel)
+	}
+	e.handle(Key{Kind: KeyEnter})
+	if e.confirmCancel {
+		t.Fatal("Enter did not choose default No")
+	}
+	e.handle(Key{Kind: KeyCancel})
+	e.handle(Key{Kind: KeyEscape})
+	if e.confirmCancel {
+		t.Fatal("Escape did not close confirmation")
+	}
+	e.handle(Key{Kind: KeyCancel})
+	e.handle(Key{Kind: KeyRune, Rune: 'n'})
+	if e.confirmCancel {
+		t.Fatal("n did not close confirmation")
+	}
+	e.handle(Key{Kind: KeyCancel})
+	if _, _, exit := e.handle(Key{Kind: KeyRune, Rune: 'y'}); exit != -1 {
+		t.Fatalf("y exit=%d", exit)
+	}
+}
+
+func TestCancelModalOwnsLiquidCursorFocus(t *testing.T) {
+	e := &Editor{buffer: &Buffer{Lines: [][]rune{[]rune("text")}}, rows: 24, cols: 80, confirmCancel: true}
+	prompt := clipPlain(" Descartar e sair? [y/N]", e.cols-1)
+	want := fmt.Sprintf("\x1b[%d;%dH\x1b[?25h", e.rows, min(visualWidth([]rune(prompt)), e.cols-1)+1)
+	if frame := e.frame(); !strings.HasSuffix(frame, want) {
+		t.Fatalf("frame does not end at modal focus: want suffix %q", want)
+	}
+}
+
 func TestCompletionWindowFollowsSelection(t *testing.T) {
 	if start := completionWindow(250, 500, 8); start > 250 || start+8 <= 250 {
 		t.Fatalf("window start=%d", start)
+	}
+}
+
+func TestUntitledConfirmReturnsTextWithoutDiskWrite(t *testing.T) {
+	root := t.TempDir()
+	e, err := NewUntitled(root, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.buffer.InsertText("# Output\nbody")
+	output, done := e.confirm()
+	if !done || output != "# Output\nbody" {
+		t.Fatalf("done=%v output=%q", done, output)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("unexpected disk files: %v", entries)
+	}
+}
+
+func TestUntitledEditorHasNoDiskPath(t *testing.T) {
+	e, err := NewUntitled(t.TempDir(), 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !e.anonymous || e.buffer.Path != "" {
+		t.Fatalf("anonymous=%v path=%q", e.anonymous, e.buffer.Path)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,8 @@ type Editor struct {
 	structureVersion                 uint64
 	insideFence, delimiter, metadata []bool
 	status                           string
+	anonymous, confirmCancel         bool
+	output                           *os.File
 }
 
 func New(path, workspace string, line, column int) (*Editor, error) {
@@ -45,32 +48,45 @@ func New(path, workspace string, line, column int) (*Editor, error) {
 		return nil, err
 	}
 	b.SetPosition(line, column)
+	return newEditor(b, lang.PathToURI(path), workspace, false)
+}
+
+func NewUntitled(workspace string, line, column int) (*Editor, error) {
+	b := &Buffer{Lines: [][]rune{{}}}
+	b.SetPosition(line, column)
+	return newEditor(b, lang.PathToURI(filepath.Join(workspace, "prompt.md")), workspace, true)
+}
+
+func newEditor(b *Buffer, uri, workspace string, anonymous bool) (*Editor, error) {
 	s, err := lang.NewService(workspace)
 	if err != nil {
 		return nil, err
 	}
-	uri := lang.PathToURI(path)
 	s.Documents.Open(uri, b.Text())
-	e := &Editor{buffer: b, service: s, uri: uri, status: "Ctrl+S save/confirm • Ctrl+X cancel • Ctrl+Space complete"}
+	e := &Editor{buffer: b, service: s, uri: uri, anonymous: anonymous, status: "Ctrl+S save/confirm • Ctrl+X cancel • Ctrl+Space complete"}
 	e.tokens = s.Semantic(uri)
 	return e, nil
 }
 
-func (e *Editor) Run() (result error) {
+func (e *Editor) Run() (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
-		return errors.New("stdin is not an interactive terminal")
+		return "", errors.New("stdin is not an interactive terminal")
 	}
 	old, err := term.MakeRaw(fd)
 	if err != nil {
-		return err
+		return "", err
+	}
+	e.output = os.Stderr
+	if !e.anonymous && !term.IsTerminal(int(os.Stderr.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		e.output = os.Stdout
 	}
 	cleanup := func() {
-		_, _ = io.WriteString(os.Stdout, "\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
+		_, _ = io.WriteString(e.output, "\x1b[>4;0m\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
 		_ = term.Restore(fd, old)
 	}
 	defer cleanup()
-	_, _ = io.WriteString(os.Stdout, "\x1b[?1049h\x1b[2J\x1b[H\x1b[?2004h\x1b[?25h")
+	_, _ = io.WriteString(e.output, "\x1b[?1049h\x1b[2J\x1b[H\x1b[>4;1m\x1b[?2004h\x1b[?25h")
 
 	done := make(chan struct{})
 	defer close(done)
@@ -96,23 +112,31 @@ func (e *Editor) Run() (result error) {
 
 	e.resize()
 	if err = e.render(); err != nil {
-		return err
+		return "", err
 	}
 	for {
 		select {
-		case <-interrupt:
-			return ErrCancelled
-		case err := <-inputErr:
-			if errors.Is(err, io.EOF) {
-				return ErrCancelled
+		case received := <-interrupt:
+			if received == os.Interrupt {
+				e.confirmCancel = true
+				e.completions = nil
+				if err = e.render(); err != nil {
+					return "", err
+				}
+				continue
 			}
-			return err
+			return "", ErrCancelled
+		case inputError := <-inputErr:
+			if errors.Is(inputError, io.EOF) {
+				return "", ErrCancelled
+			}
+			return "", inputError
 		case <-resize:
 			oldRows, oldCols := e.rows, e.cols
 			e.resize()
 			if oldRows != e.rows || oldCols != e.cols {
 				if err = e.render(); err != nil {
-					return err
+					return "", err
 				}
 			}
 		case <-analysis:
@@ -120,29 +144,27 @@ func (e *Editor) Run() (result error) {
 			e.tokens = e.service.SemanticCached(e.uri)
 			analysis = nil
 			if err = e.render(); err != nil {
-				return err
+				return "", err
 			}
 		case key := <-keys:
 			if key.Kind == KeySuspend {
-				if err = suspendTerminal(fd, old); err != nil {
-					return err
+				if err = suspendTerminal(fd, old, e.output); err != nil {
+					return "", err
 				}
 				e.resize()
 				if err = e.render(); err != nil {
-					return err
+					return "", err
 				}
 				continue
 			}
 			changed, complete, exit := e.handle(key)
 			if exit == 1 {
-				if err = e.buffer.Save(); err != nil {
-					e.status = "save failed: " + err.Error()
-				} else {
-					return nil
+				if confirmed, done := e.confirm(); done {
+					return confirmed, nil
 				}
 			}
 			if exit == -1 {
-				return ErrCancelled
+				return "", ErrCancelled
 			}
 			if changed {
 				schedule()
@@ -153,19 +175,41 @@ func (e *Editor) Run() (result error) {
 				e.refreshCompletion()
 			}
 			if err = e.render(); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
 }
 
+func (e *Editor) confirm() (string, bool) {
+	if e.anonymous {
+		return e.buffer.Text(), true
+	}
+	if err := e.buffer.Save(); err != nil {
+		e.status = "save failed: " + err.Error()
+		return "", false
+	}
+	return "", true
+}
+
 func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	before := e.buffer.Version
+	if e.confirmCancel {
+		if k.Kind == KeyRune && (k.Rune == 'y' || k.Rune == 'Y') {
+			return false, false, -1
+		}
+		if k.Kind == KeyRune && (k.Rune == 'n' || k.Rune == 'N') || k.Kind == KeyEscape || k.Kind == KeyCancel || k.Kind == KeyEnter {
+			e.confirmCancel = false
+		}
+		return false, false, 0
+	}
 	switch k.Kind {
 	case KeySave:
 		return false, false, 1
 	case KeyCancel:
-		return false, false, -1
+		e.confirmCancel = true
+		e.completions = nil
+		return false, false, 0
 	case KeyEscape:
 		e.completions = nil
 	case KeyComplete:
@@ -199,6 +243,11 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 		if pair {
 			e.buffer.Delete()
 		}
+	case KeyDeleteWord:
+		e.buffer.DeleteWordBackward()
+	case KeyInsertLineBelow:
+		e.completions = nil
+		e.buffer.InsertLineBelow()
 	case KeyDelete:
 		e.buffer.Delete()
 	case KeyLeft:
@@ -256,7 +305,7 @@ func (e *Editor) refreshCompletion() {
 	e.selected = 0
 }
 func (e *Editor) resize() {
-	cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
+	cols, rows, err := term.GetSize(int(e.output.Fd()))
 	if err != nil {
 		cols, rows = 80, 24
 	}
@@ -618,7 +667,7 @@ func clipPlain(s string, width int) string {
 	return b.String()
 }
 
-func (e *Editor) render() error {
+func (e *Editor) frame() string {
 	gutter, editorRows, caretRow, caretCol := e.layout()
 	var frame strings.Builder
 	frame.Grow(e.rows*e.cols + 256)
@@ -645,14 +694,25 @@ func (e *Editor) render() error {
 		if e.buffer.Dirty {
 			status = "● " + status
 		}
-		status = " " + filepathBase(e.buffer.Path) + "  " + status
+		name := filepathBase(e.buffer.Path)
+		if e.anonymous {
+			name = "[No Name]"
+		}
+		status = " " + name + "  " + status
 		fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, clipPlain(status, max(0, e.cols-1)))
 	}
 	e.renderPopup(&frame, caretRow, caretCol, editorRows)
-	fmt.Fprintf(&frame, "\x1b[%d;%dH\x1b[?25h", caretRow+1, caretCol+1)
-	_, err := io.WriteString(os.Stdout, frame.String())
-	return err
+	focusRow, focusCol := caretRow, caretCol
+	if e.confirmCancel {
+		prompt := clipPlain(" Descartar e sair? [y/N]", max(0, e.cols-1))
+		fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, prompt)
+		focusRow = e.rows - 1
+		focusCol = min(runewidth.StringWidth(prompt), e.cols-1)
+	}
+	fmt.Fprintf(&frame, "\x1b[%d;%dH\x1b[?25h", focusRow+1, focusCol+1)
+	return frame.String()
 }
+func (e *Editor) render() error { _, err := io.WriteString(e.output, e.frame()); return err }
 func filepathBase(path string) string {
 	path = strings.ReplaceAll(path, "\\", "/")
 	if i := strings.LastIndex(path, "/"); i >= 0 {
@@ -664,7 +724,7 @@ func completionWindow(selected, total, count int) int {
 	return max(0, min(selected-count/2, total-count))
 }
 func (e *Editor) renderPopup(frame *strings.Builder, caretRow, caretCol, editorRows int) {
-	if len(e.completions) == 0 || e.rows < 2 {
+	if len(e.completions) == 0 || e.rows < 2 || e.confirmCancel {
 		return
 	}
 	count := min(8, len(e.completions))

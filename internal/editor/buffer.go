@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/rivo/uniseg"
 
@@ -77,6 +78,75 @@ func (b *Buffer) InsertText(s string) {
 		}
 	}
 }
+func (b *Buffer) InsertLineBelow() {
+	line := b.Lines[b.Row]
+	indentEnd := 0
+	for indentEnd < len(line) && (line[indentEnd] == ' ' || line[indentEnd] == '\t') {
+		indentEnd++
+	}
+	indent := append([]rune(nil), line[:indentEnd]...)
+	at := b.Row + 1
+	b.Lines = append(b.Lines, nil)
+	copy(b.Lines[at+1:], b.Lines[at:])
+	b.Lines[at] = indent
+	b.Row, b.Col = at, len(indent)
+	b.touch()
+}
+
+type wordClass uint8
+
+const (
+	wordSpace wordClass = iota
+	wordText
+	wordOther
+)
+
+func classifyGrapheme(cluster []rune) wordClass {
+	allSpace := len(cluster) > 0
+	for _, r := range cluster {
+		if !unicode.IsSpace(r) {
+			allSpace = false
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			return wordText
+		}
+	}
+	if allSpace {
+		return wordSpace
+	}
+	return wordOther
+}
+func (b *Buffer) DeleteWordBackward() {
+	if b.Col == 0 {
+		b.Backspace()
+		return
+	}
+	line, end := b.Lines[b.Row], b.Col
+	bounds := graphemeBounds(line)
+	clusterEnd := 1
+	for clusterEnd < len(bounds) && bounds[clusterEnd] < end {
+		clusterEnd++
+	}
+	if clusterEnd >= len(bounds) {
+		clusterEnd = len(bounds) - 1
+	}
+	end = bounds[clusterEnd]
+	i := clusterEnd
+	for i > 0 && classifyGrapheme(line[bounds[i-1]:bounds[i]]) == wordSpace {
+		i--
+	}
+	if i > 0 {
+		class := classifyGrapheme(line[bounds[i-1]:bounds[i]])
+		for i > 0 && classifyGrapheme(line[bounds[i-1]:bounds[i]]) == class {
+			i--
+		}
+	}
+	start := bounds[i]
+	b.Lines[b.Row] = append(line[:start], line[end:]...)
+	b.Col = start
+	b.touch()
+}
+
 func (b *Buffer) Newline() {
 	line := b.Lines[b.Row]
 	tail := append([]rune(nil), line[b.Col:]...)

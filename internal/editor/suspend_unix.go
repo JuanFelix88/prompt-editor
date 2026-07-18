@@ -10,8 +10,8 @@ import (
 	"golang.org/x/term"
 )
 
-func suspendTerminal(fd int, old *term.State) error {
-	_, _ = io.WriteString(os.Stdout, "\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
+func suspendTerminal(fd int, old *term.State, output io.Writer) error {
+	_, _ = io.WriteString(output, "\x1b[>4;0m\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
 	if err := term.Restore(fd, old); err != nil {
 		return err
 	}
@@ -20,7 +20,7 @@ func suspendTerminal(fd int, old *term.State) error {
 	}
 	_, err := term.MakeRaw(fd)
 	if err == nil {
-		_, _ = io.WriteString(os.Stdout, "\x1b[?1049h\x1b[2J\x1b[H\x1b[?2004h\x1b[?25h")
+		_, _ = io.WriteString(output, "\x1b[?1049h\x1b[2J\x1b[H\x1b[>4;1m\x1b[?2004h\x1b[?25h")
 	}
 	return err
 }

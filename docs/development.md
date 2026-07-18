@@ -1,6 +1,6 @@
-# Desenvolvimento e release
+# Development and release
 
-## Checks
+## Local checks
 
 ```sh
 gofmt -w cmd internal
@@ -9,33 +9,62 @@ go vet ./...
 go build ./cmd/prompt-cli
 ```
 
-Build enxuto e reproduzível:
+A small, reproducible release build:
 
 ```sh
-CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/juanandrade/prompt-cli/internal/app.Version=0.1.0" -o dist/prompt-cli ./cmd/prompt-cli
+CGO_ENABLED=0 go build \
+  -trimpath \
+  -ldflags="-s -w -X github.com/juanandrade/prompt-cli/internal/app.Version=v0.6.1" \
+  -o dist/prompt-cli \
+  ./cmd/prompt-cli
 ```
 
-No Windows, use `dist/prompt-cli.exe`. Dependências são pure Go; não há assets externos nem downloads em runtime.
+On Windows, use `dist/prompt-cli.exe`. Dependencies are pure Go; the application has no external assets or runtime downloads.
 
-## Decisões de performance
+## GitHub Actions and releases
 
-- snapshot e análise semântica da TUI recebem debounce de 75 ms;
-- validação visual reutiliza status por 2 s; LSP hover/definition/semantic continuam frescos;
-- completion constrói o índice de forma lazy e o reutiliza por 2 s;
-- varredura BFS limitada a 50.000 metadados;
-- resposta limitada a 500 candidatos;
-- renderer mantém somente viewport e constrói um write por frame;
-- documento aberto não é relido do disco;
-- validação de navegação continua fresca por design.
+GitHub Actions contains two workflows:
 
-O buffer de linhas/runes privilegia simplicidade. Antes de introduzir rope/piece table, meça arquivos Prompt Lang reais; uma estrutura mais complexa só é justificável se benchmarks demonstrarem latência relevante.
+- [CI](../.github/workflows/ci.yml) runs `go test ./...`, `go vet ./...`, and `go build ./cmd/prompt-cli` on Linux and Windows for pull requests and pushes to `main`.
+- [Release](../.github/workflows/release.yml) runs the same checks and publishes a GitHub Release when a tag matching `v*` is pushed.
 
-## Limitações conhecidas
+The release workflow builds the tag version into the binary, then uploads these amd64 assets:
 
-- Não há undo/redo, mouse, múltiplos buffers ou soft wrap.
-- Highlighting estrutural cobre os blocos Markdown relevantes, mas linguagens embutidas indisponíveis degradam para estilo genérico de código.
-- O índice é TTL, sem watcher do filesystem.
-- Save em filesystems/plataformas sem replace-atômico por `rename` herda a semântica do `os.Rename` local.
-- O smoke test de Liquid Cursor depende de pnex.
+```text
+prompt-cli_vX.Y.Z_linux_amd64.tar.gz
+prompt-cli_vX.Y.Z_linux_amd64.tar.gz.sha256
+prompt-cli_vX.Y.Z_windows_amd64.zip
+prompt-cli_vX.Y.Z_windows_amd64.zip.sha256
+```
 
-Essas limitações não alteram a gramática e o IntelliSense Prompt Lang documentados; representam funcionalidades editoriais deliberadamente fora do binário inicial simples.
+Create and publish a future release only after the intended commit is on `main`:
+
+```sh
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The workflow uses the repository `GITHUB_TOKEN` with `contents: write` only in its release job. No personal access token is required for normal GitHub Releases.
+
+## Performance decisions
+
+- TUI snapshots and semantic analysis use a 75 ms debounce;
+- visual validation reuses status for 2 s; LSP hover/definition/semantic tokens remain fresh;
+- completion builds the index lazily and reuses it for 2 s;
+- breadth-first workspace scanning is limited to 50,000 metadata entries;
+- responses are limited to 500 candidates;
+- the renderer keeps only the viewport and produces one write per frame;
+- an open document is not read from disk again;
+- navigation validation stays fresh by design.
+
+The line/rune buffer favors simplicity. Before adding a rope or piece table, benchmark real Prompt Lang files; a more complex structure is justified only if benchmarks demonstrate material latency.
+
+## Known limitations
+
+- There is no undo/redo, mouse support, multiple buffers, or soft wrap.
+- Structural highlighting covers the relevant Markdown blocks; unavailable embedded-language highlighting falls back to generic code styling.
+- The index is TTL-based and has no filesystem watcher.
+- Saving on filesystems or platforms without atomic `rename` replacement inherits the local `os.Rename` behavior.
+- The Liquid Cursor smoke test depends on pnex.
+
+These limitations do not alter the documented Prompt Lang grammar or IntelliSense; they are intentional omissions from the initial small binary.

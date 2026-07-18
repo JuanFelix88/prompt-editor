@@ -29,6 +29,8 @@ const (
 	KeyPageDown
 	KeyPaste
 	KeySuspend
+	KeyDeleteWord
+	KeyInsertLineBelow
 )
 
 type Key struct {
@@ -73,6 +75,11 @@ func (d *inputDecoder) decode() (keys []Key) {
 		if b == 0x1b {
 			if len(d.buf) == 1 {
 				return keys
+			}
+			if d.buf[1] == 8 || d.buf[1] == 127 {
+				keys = append(keys, Key{Kind: KeyDeleteWord})
+				d.buf = d.buf[2:]
+				continue
 			}
 			if d.buf[1] != '[' && d.buf[1] != 'O' {
 				keys = append(keys, Key{Kind: KeyEscape})
@@ -120,19 +127,31 @@ func (d *inputDecoder) decode() (keys []Key) {
 			keys = append(keys, Key{Kind: KeySave})
 			d.buf = d.buf[1:]
 			continue
+		case 23:
+			keys = append(keys, Key{Kind: KeyDeleteWord})
+			d.buf = d.buf[1:]
+			continue
 		case 26:
 			keys = append(keys, Key{Kind: KeySuspend})
 			d.buf = d.buf[1:]
 			continue
-		case '\r', '\n':
+		case '\r':
 			keys = append(keys, Key{Kind: KeyEnter})
+			d.buf = d.buf[1:]
+			continue
+		case '\n':
+			keys = append(keys, Key{Kind: KeyInsertLineBelow})
 			d.buf = d.buf[1:]
 			continue
 		case '\t':
 			keys = append(keys, Key{Kind: KeyTab})
 			d.buf = d.buf[1:]
 			continue
-		case 8, 127:
+		case 8:
+			keys = append(keys, Key{Kind: KeyBackspace})
+			d.buf = d.buf[1:]
+			continue
+		case 127:
 			keys = append(keys, Key{Kind: KeyBackspace})
 			d.buf = d.buf[1:]
 			continue
@@ -171,6 +190,10 @@ func escapeKey(seq string) (Key, bool) {
 		return Key{Kind: KeyPageUp}, true
 	case "6~":
 		return Key{Kind: KeyPageDown}, true
+	case "8;5u", "127;5u", "27;3;8~", "27;3;127~", "27;5;8~", "27;5;127~":
+		return Key{Kind: KeyDeleteWord}, true
+	case "13;5u", "27;5;13~":
+		return Key{Kind: KeyInsertLineBelow}, true
 	default:
 		return Key{}, false
 	}

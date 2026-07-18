@@ -2,6 +2,9 @@
 
 package editor
 
-import "golang.org/x/term"
+import (
+	"golang.org/x/term"
+	"io"
+)
 
-func suspendTerminal(_ int, _ *term.State) error { return nil }
+func suspendTerminal(_ int, _ *term.State, _ io.Writer) error { return nil }
