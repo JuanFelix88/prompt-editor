@@ -310,6 +310,13 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	case KeyEnd:
 		e.completions = nil
 		e.buffer.Col = len(e.buffer.Lines[e.buffer.Row])
+	case KeyDocumentHome:
+		e.completions = nil
+		e.buffer.Row, e.buffer.Col = 0, 0
+	case KeyDocumentEnd:
+		e.completions = nil
+		e.buffer.Row = len(e.buffer.Lines) - 1
+		e.buffer.Col = len(e.buffer.Lines[e.buffer.Row])
 	case KeyUp:
 		if len(e.completions) > 0 {
 			e.selected--

@@ -35,6 +35,7 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 | `Ctrl+←` / `Ctrl+→` ou `Alt+←` / `Alt+→` | move por palavra |
 | `Alt+↑` / `Alt+↓` | move a linha atual para cima/baixo |
 | `Home` / `End` | início/fim da linha |
+| `Ctrl+Home` / `Ctrl+End` | início/fim do documento |
 | `Backspace` / `Delete` | apaga grapheme/junção de linha |
 | `Ctrl+Backspace` / `Alt+Backspace` / `Ctrl+W` | apaga a palavra anterior |
 | `Ctrl+Delete` | apaga o restante da palavra atual/próxima |

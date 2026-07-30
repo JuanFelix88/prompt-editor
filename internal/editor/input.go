@@ -40,6 +40,8 @@ const (
 	KeyMoveLineUp
 	KeyMoveLineDown
 	KeyInsertLineAbove
+	KeyDocumentHome
+	KeyDocumentEnd
 )
 
 type Key struct {
@@ -204,6 +206,10 @@ func escapeKey(seq string) (Key, bool) {
 		return Key{Kind: KeyHome}, true
 	case "F", "4~", "8~":
 		return Key{Kind: KeyEnd}, true
+	case "1;5H", "1;5~", "7;5~":
+		return Key{Kind: KeyDocumentHome}, true
+	case "1;5F", "4;5~", "8;5~":
+		return Key{Kind: KeyDocumentEnd}, true
 	case "3~":
 		return Key{Kind: KeyDelete}, true
 	case "5~":

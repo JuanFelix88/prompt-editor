@@ -108,6 +108,20 @@ func TestWordMovementCrossesLines(t *testing.T) {
 	}
 }
 
+func TestDocumentHomeAndEnd(t *testing.T) {
+	e := &Editor{buffer: &Buffer{Lines: [][]rune{[]rune("first"), []rune("middle"), []rune("last")}, Row: 1, Col: 3}}
+
+	e.handle(Key{Kind: KeyDocumentHome})
+	if e.buffer.Row != 0 || e.buffer.Col != 0 {
+		t.Fatalf("document home row=%d col=%d", e.buffer.Row, e.buffer.Col)
+	}
+
+	e.handle(Key{Kind: KeyDocumentEnd})
+	if e.buffer.Row != 2 || e.buffer.Col != 4 {
+		t.Fatalf("document end row=%d col=%d", e.buffer.Row, e.buffer.Col)
+	}
+}
+
 func TestInsertLinesPreserveFocusedLine(t *testing.T) {
 	b := &Buffer{Lines: [][]rune{[]rune("  keep this"), []rune("next")}, Row: 0, Col: 6}
 	b.InsertLineBelow()

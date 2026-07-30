@@ -136,6 +136,7 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 | `Ctrl+←` / `Ctrl+→` or `Alt+←` / `Alt+→` | Move by word. |
 | `Alt+↑` / `Alt+↓` | Move the current line up/down. |
 | `Home` / `End` | Move to the start/end of the line. |
+| `Ctrl+Home` / `Ctrl+End` | Move to the start/end of the document. |
 | `Backspace` / `Delete` | Delete a grapheme or join lines. |
 | `Ctrl+Backspace` / `Alt+Backspace` / `Ctrl+W` | Delete the previous word. |
 | `Ctrl+Delete` | Delete the rest of the current/next word. |
