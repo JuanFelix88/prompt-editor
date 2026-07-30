@@ -57,9 +57,7 @@ func runeToUTF16(rs []rune, index int) int {
 
 func isPromptPath(path string) bool {
 	name := strings.ToLower(filepath.Base(path))
-	return name == "prompt.md" || name == "prompts.md" ||
-		strings.HasSuffix(name, ".prompt.md") || strings.HasSuffix(name, ".prompts.md") ||
-		strings.HasSuffix(name, ".prompt")
+	return strings.HasSuffix(name, ".md") || strings.HasSuffix(name, ".prompt")
 }
 
 func pathEqualOrInside(root, target string) bool {

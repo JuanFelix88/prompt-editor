@@ -19,15 +19,11 @@ The server advertises full-document synchronization, completion triggers `@`, `/
 
 ## Where the features are active
 
-IntelliSense is gated by the document URI's case-insensitive filename. It is active for:
+IntelliSense is gated by the document URI's case-insensitive filename. It is active for every name ending in `.md` or `.prompt`.
 
-- `prompt.md` and `prompts.md`;
-- names ending in `.prompt.md` or `.prompts.md`;
-- names ending in `.prompt`.
+A URI that cannot be converted to a local file path is not recognized as a prompt document. Completion, hover, and definition then return no result. Reference semantic tokens are likewise restricted to recognized documents.
 
-A URI that cannot be converted to a local file path is not recognized as a prompt document. Completion, hover, and definition then return no result. Reference semantic tokens are likewise restricted to prompt documents.
-
-This filename check is independent of a client's language identifier. Consequently, merely assigning the prompt language to an ordinary `notes.md` URI does not enable these IntelliSense features, while a matching filename does.
+This filename check is independent of a client's language identifier.
 
 ## Text and position model
 

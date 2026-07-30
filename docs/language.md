@@ -4,13 +4,7 @@ Os contratos normativos completos estão em [`docs/reference/prompt-lang-concept
 
 ## Ativação
 
-Recursos contextuais são case-insensitive e ativados somente em:
-
-- `prompt.md`, `prompts.md`;
-- `*.prompt.md`, `*.prompts.md`;
-- `*.prompt`.
-
-Outros `.md` mantêm edição e highlighting Markdown, além da paleta de ATX headings, mas não recebem semântica de referências ou prompt items.
+Recursos contextuais são ativados em qualquer arquivo `*.md` ou `*.prompt`, sem distinção pelo nome.
 
 ## Referências de workspace
 

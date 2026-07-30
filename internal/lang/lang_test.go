@@ -60,22 +60,22 @@ func TestCompletionAndFreshResolution(t *testing.T) {
 		t.Fatalf("hover=%#v", h)
 	}
 }
-func TestTraversalAndPromptGate(t *testing.T) {
+func TestTraversalAndMarkdownActivation(t *testing.T) {
 	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "guide.md"), []byte("# Guide"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	s, _ := NewService(root)
 	if _, _, ok := Resolve(root, "../outside"); ok {
 		t.Fatal("workspace traversal resolved")
 	}
 	uri := PathToURI(filepath.Join(root, "notes.md"))
-	s.Documents.Open(uri, "@missing\n# H")
-	if got := s.Complete(uri, Position{Line: 0, Character: 1}); len(got.Items) != 0 {
-		t.Fatalf("generic markdown got prompt completions")
+	s.Documents.Open(uri, "@gu\n# H")
+	if got := s.Complete(uri, Position{Line: 0, Character: 3}); len(got.Items) == 0 || got.Items[0].TextEdit.NewText != "guide.md" {
+		t.Fatalf("markdown completion=%#v", got)
 	}
-	tokens := s.Semantic(uri)
-	for _, tok := range tokens {
-		if tok.Kind == TokenFile || tok.Kind == TokenFileMissing || tok.Kind == TokenPromptItem {
-			t.Fatalf("generic markdown leaked token %v", tok)
-		}
+	if tokens := s.Semantic(uri); len(tokens) == 0 {
+		t.Fatal("markdown got no semantic tokens")
 	}
 }
 func TestSemanticTokensDoNotOverlap(t *testing.T) {

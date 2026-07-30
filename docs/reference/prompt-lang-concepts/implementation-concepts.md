@@ -48,7 +48,7 @@ The Markdown parser and language service do not share a parse tree. General Mark
 
 The manifest binds one named language to one language service, pins the Markdown grammar source revision, and describes the compiled adapter. Registration is configuration, not runtime discovery: names and identifiers must agree among the manifest, language definition, and adapter.
 
-The language definition associates both general Markdown suffixes and prompt-oriented suffixes with the Markdown grammar. The service applies a narrower filename predicate before enabling prompt-reference features. This division allows shared heading coloring to be returned more broadly while preventing prompt-specific references and list styling from leaking into ordinary Markdown.
+The language definition and service both recognize general Markdown (`.md`) and Prompt Lang (`.prompt`) suffixes. Prompt-reference features and list styling therefore apply to both.
 
 ### Host adapter
 
@@ -214,11 +214,7 @@ This is lexical confinement, not physical confinement. A reference through a sym
 
 ### Document identity and activation
 
-Document URIs are converted only through local-file URI rules. Snapshot-map keys remain the original URI strings; they are not separately canonicalized. Prompt behavior is enabled by a case-insensitive filename check for:
-
-- the two conventional bare prompt Markdown names;
-- singular or plural prompt markers before `.md`; or
-- the dedicated `.prompt` suffix.
+Document URIs are converted only through local-file URI rules. Snapshot-map keys remain the original URI strings; they are not separately canonicalized. Prompt behavior is enabled by a case-insensitive filename check for the `.md` and `.prompt` suffixes.
 
 The filename gate is intentionally independent of path-reference normalization.
 
@@ -308,7 +304,7 @@ A faithful implementation should preserve these properties:
 9. Duplicate heading definitions resolve to the first match.
 10. Semantic token categories use the same stable order advertised at initialization.
 11. Semantic ranges are sorted and non-overlapping; references override broad line/heading styles.
-12. Prompt-only behavior is guarded by the prompt filename predicate.
+12. Prompt behavior is guarded by the `.md`/`.prompt` filename predicate.
 13. Protocol output contains frames only; logging never shares its stream.
 
 ## Design trade-offs
@@ -348,7 +344,7 @@ The implementation favors minimal packaging and understandable logic over perfec
 - No cancellation, request concurrency, progress reporting, diagnostics, configuration updates, watched-file events, or incremental semantic tokens are implemented.
 - The framing parser has no explicit maximum body size.
 - The fixed extracted-server path assumes the extension working directory is writable and that simultaneous writers produce identical content.
-- General language registration includes ordinary Markdown suffixes, while prompt feature activation is filename-based. Host language-selection rules therefore remain part of the effective activation behavior.
+- Language registration and prompt feature activation include ordinary Markdown suffixes. Host language-selection rules remain part of the effective activation behavior.
 
 ## Packaging and runtime assumptions
 

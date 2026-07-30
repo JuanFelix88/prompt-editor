@@ -9,14 +9,7 @@ The language is ordinary Markdown with a small prompt-oriented semantic layer. I
 
 The second pass is not a replacement for the Markdown parser. It overlays narrower semantic ranges on broad structural ranges. A faithful implementation must give those narrower ranges precedence and must avoid emitting overlapping semantic ranges.
 
-The prompt-only semantic layer is intended for these file names:
-
-- `prompt.md` and `prompts.md`
-- names ending in `.prompt.md`
-- names ending in `.prompts.md`
-- names ending in `.prompt`
-
-Matching is case-insensitive. The language registration also recognizes generic `md` and `prompt` suffixes, but contextual file references, heading references, and prompt-item coloring are deliberately gated by the stricter names above. Custom ATX heading decoration is computed independently of that gate. A port should decide explicitly whether generic Markdown receives the heading palette, and should not accidentally enable workspace-sensitive prompt constructs in every Markdown file.
+The semantic layer applies to every file ending in `.md` or `.prompt`, case-insensitively. Contextual file references, heading references, and prompt-item coloring therefore work in generic Markdown too. Custom ATX heading decoration is computed independently of that gate.
 
 ## Structural Markdown layer
 
@@ -208,7 +201,7 @@ A reproducing implementation should make the following constraints explicit:
 - Semantic scans do not generally respect Markdown or embedded-language context.
 - The semantic fence detector and the structural Markdown parser can disagree on malformed input.
 - Inline Markdown parsing is not guaranteed by the supplied language query.
-- Generic Markdown activation and strict prompt-document semantics use different filename tests.
+- Generic Markdown and prompt-document semantics use the same suffix test.
 - Fixed colors exist only as fallbacks for existing and missing file references; most other appearance is theme-derived.
 
 These are important compatibility boundaries. Improving them—such as ignoring references in code, supporting escaped brackets, resolving paths relative to the document, indexing Setext headings, or case-folding heading names—may be desirable, but changes the language's current meaning.

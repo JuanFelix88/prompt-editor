@@ -91,14 +91,9 @@ The server does not implement diagnostics, code actions, reference search, renam
 
 ## File and language detection
 
-There are two predicates and they are not identical:
+The language configuration and server predicate both recognize the broad, case-insensitive suffixes `md` and `prompt`. Prompt IntelliSense and prompt-reference semantics therefore apply to every `.md` and `.prompt` file.
 
-- The language configuration lists the broad suffixes `md` and `prompt`.
-- Prompt IntelliSense and prompt-reference semantics are gated in server code to exact `prompt.md` / `prompts.md`, suffixes `.prompt.md` / `.prompts.md`, or suffix `.prompt` (case-insensitive after URI-to-path conversion).
-
-The README's statement that prompt features activate on those prompt-oriented names matches the server predicate, but the broad `md` language suffix means language selection itself is not narrowly encoded to those names. Integrations should not assume that selecting the Markdown Prompt grammar implies prompt-reference behavior for every `.md` file.
-
-There is one further implementation asymmetry: reference and hyphen-list semantic tokens are filename-gated, while ATX heading semantic tokens are generated regardless of the prompt filename. Whether those tokens are observed depends on which documents are connected to this language/server, but the server itself does not gate them.
+Reference and hyphen-list semantic tokens are suffix-gated, while ATX heading semantic tokens are generated regardless of the filename. Whether those tokens are observed depends on which documents are connected to this language/server.
 
 Non-file URIs cannot satisfy the prompt filename predicate because URI conversion must produce a filesystem path. Filename matching is case-insensitive, while reference existence follows platform filesystem behavior.
 
@@ -120,7 +115,7 @@ To reproduce this support in another editor or language host without copying pla
 
 1. **Pin the same grammar revision and build options.** Register the block grammar and explicitly decide whether to add the separate inline grammar. Do not infer active inline support merely from its presence in the source tree.
 2. **Port the query intent as separate concerns.** Preserve structural Markdown captures, ATX-only outline behavior, language-selected fence embedding, HTML embedding, and YAML/TOML metadata embedding. Validate every queried node against the pinned grammar's node types.
-3. **Define prompt-document detection once.** Prefer one shared predicate for language assignment and prompt services. If compatibility with this repository is required, use the exact five filename patterns above and document the broader `.md` grammar association separately.
+3. **Define prompt-document detection once.** For compatibility with this repository, enable prompt services for the case-insensitive `.md` and `.prompt` suffixes.
 4. **Keep context resolution workspace-relative.** Normalize separators, reject traversal, decide how symlinks should be handled, exclude generated directories, and bound indexing/completion work. Preserve directory references if compatibility is desired.
 5. **Replicate reference syntax precisely before extending it.** File tokens use the ASCII path alphabet above. Heading paths are current-document, ATX-only, exact/case-sensitive, and separated by normalized `>` components.
 6. **Choose an explicit syntax-boundary policy.** Exact compatibility requires prompt references to remain active in code fences and other literal regions while heading definitions are fence-aware. A more predictable implementation should instead derive all prompt features from parsed ranges and consistently suppress them in fenced/indented code, inline code, HTML, and metadata; that would be an intentional behavior change.

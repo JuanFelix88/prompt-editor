@@ -60,4 +60,4 @@ Configure o cliente para executar:
 }
 ```
 
-Associe o servidor a `.prompt`, `prompt.md`, `prompts.md`, `*.prompt.md` e `*.prompts.md`. Um cliente também pode associar `.md` para receber a paleta de headings, sabendo que a gate contextual continua baseada no nome do arquivo.
+Associe o servidor a `*.md` e `*.prompt`; ambos recebem todos os recursos de Prompt Lang.
