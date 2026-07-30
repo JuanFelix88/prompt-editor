@@ -22,6 +22,23 @@ import (
 var ErrCancelled = errors.New("editing cancelled")
 var autoPairs = map[rune]rune{'(': ')', '[': ']', '{': '}', '"': '"', '\'': '\'', '`': '`'}
 
+const enableKeyboardEnhancements = "\x1b[>4;2m\x1b[>1u"
+const disableKeyboardEnhancements = "\x1b[<u\x1b[>4;0m"
+
+func (e *Editor) terminalTitle() string {
+	name := "Untitled"
+	if !e.anonymous {
+		name = filepath.Base(e.buffer.Path)
+	}
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, name)
+	return "\x1b]0;prompt-cli — " + name + "\x07"
+}
+
 type Editor struct {
 	buffer                           *Buffer
 	service                          *lang.Service
@@ -63,7 +80,7 @@ func newEditor(b *Buffer, uri, workspace string, anonymous bool) (*Editor, error
 		return nil, err
 	}
 	s.Documents.Open(uri, b.Text())
-	e := &Editor{buffer: b, service: s, uri: uri, anonymous: anonymous, status: "Ctrl+S save/confirm • Ctrl+X cancel • Ctrl+Space complete"}
+	e := &Editor{buffer: b, service: s, uri: uri, anonymous: anonymous, status: "Ctrl+S save/confirm • Ctrl+Shift+S save • Ctrl+X cancel"}
 	e.tokens = s.Semantic(uri)
 	return e, nil
 }
@@ -82,11 +99,11 @@ func (e *Editor) Run() (string, error) {
 		e.output = os.Stdout
 	}
 	cleanup := func() {
-		_, _ = io.WriteString(e.output, "\x1b[>4;0m\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
+		_, _ = io.WriteString(e.output, disableKeyboardEnhancements+"\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
 		_ = term.Restore(fd, old)
 	}
 	defer cleanup()
-	_, _ = io.WriteString(e.output, "\x1b[?1049h\x1b[2J\x1b[H\x1b[>4;1m\x1b[?2004h\x1b[?25h")
+	_, _ = io.WriteString(e.output, e.terminalTitle()+"\x1b[?1049h\x1b[2J\x1b[H"+enableKeyboardEnhancements+"\x1b[?2004h\x1b[?25h")
 
 	done := make(chan struct{})
 	defer close(done)
@@ -191,6 +208,17 @@ func (e *Editor) confirm() (string, bool) {
 	}
 	return "", true
 }
+func (e *Editor) saveWithoutExit() {
+	if e.anonymous {
+		e.status = "untitled content can only be saved with Ctrl+S"
+		return
+	}
+	if err := e.buffer.Save(); err != nil {
+		e.status = "save failed: " + err.Error()
+		return
+	}
+	e.status = "saved"
+}
 
 func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	before := e.buffer.Version
@@ -206,6 +234,9 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	switch k.Kind {
 	case KeySave:
 		return false, false, 1
+	case KeySaveWithoutExit:
+		e.completions = nil
+		e.saveWithoutExit()
 	case KeyCancel:
 		e.confirmCancel = true
 		e.completions = nil
@@ -245,9 +276,20 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 		}
 	case KeyDeleteWord:
 		e.buffer.DeleteWordBackward()
+	case KeyDeleteWordForward:
+		e.buffer.DeleteWordForward()
 	case KeyInsertLineBelow:
 		e.completions = nil
 		e.buffer.InsertLineBelow()
+	case KeyInsertLineAbove:
+		e.completions = nil
+		e.buffer.InsertLineAbove()
+	case KeyMoveLineUp:
+		e.completions = nil
+		e.buffer.MoveLineUp()
+	case KeyMoveLineDown:
+		e.completions = nil
+		e.buffer.MoveLineDown()
 	case KeyDelete:
 		e.buffer.Delete()
 	case KeyLeft:
@@ -256,6 +298,12 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	case KeyRight:
 		e.completions = nil
 		e.buffer.Right()
+	case KeyWordLeft:
+		e.completions = nil
+		e.buffer.WordLeft()
+	case KeyWordRight:
+		e.completions = nil
+		e.buffer.WordRight()
 	case KeyHome:
 		e.completions = nil
 		e.buffer.Col = 0

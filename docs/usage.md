@@ -25,16 +25,20 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 | Tecla | Ação |
 | --- | --- |
 | `Ctrl+S` | com arquivo, grava atomicamente; sem arquivo, envia texto ao stdout; fecha com código 0 |
+| `Ctrl+Shift+S` | com arquivo, grava atomicamente sem fechar; sem arquivo, mantém o buffer aberto e exibe um aviso |
 | `Ctrl+X` / `Ctrl+C` | abre confirmação; `y` descarta e fecha com código 130, `n`/`Esc`/`Enter` continua |
 | `Ctrl+Space` | abre/atualiza completion |
 | `Tab` ou `Enter` | aceita completion; sem popup, insere tab/newline |
 | `Esc` | fecha completion |
 | `↑` / `↓` | move caret ou seleção do popup |
 | `←` / `→` | move por grapheme |
+| `Ctrl+←` / `Ctrl+→` ou `Alt+←` / `Alt+→` | move por palavra |
+| `Alt+↑` / `Alt+↓` | move a linha atual para cima/baixo |
 | `Home` / `End` | início/fim da linha |
 | `Backspace` / `Delete` | apaga grapheme/junção de linha |
 | `Ctrl+Backspace` / `Alt+Backspace` / `Ctrl+W` | apaga a palavra anterior |
-| `Ctrl+Enter` | insere uma linha abaixo, preservando a linha atual e sua indentação |
+| `Ctrl+Delete` | apaga o restante da palavra atual/próxima |
+| `Ctrl+Enter` / `Shift+Enter` | insere uma linha com a mesma indentação abaixo/acima, sem alterar a linha atual |
 | `Page Up` / `Page Down` | move uma viewport |
 
 Completion também abre ao digitar `@`, `[`, ou `/` em um contexto válido. O popup nunca substitui o cursor real: o cursor permanece no caret do documento.

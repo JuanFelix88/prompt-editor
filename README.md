@@ -127,15 +127,19 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 | Key | Action |
 | --- | --- |
 | `Ctrl+S` | Save/confirm and exit. In untitled mode, write Markdown to stdout. |
+| `Ctrl+Shift+S` | Save a file without closing the editor. Untitled buffers remain open and unchanged. |
 | `Ctrl+X` / `Ctrl+C` | Ask before discarding changes; confirmed cancellation exits with code 130. |
 | `Ctrl+Space` | Open or refresh completion. |
 | `Tab` / `Enter` | Accept completion, or insert a tab/newline when no popup is open. |
 | `Esc` | Close completion or cancel a discard prompt. |
 | Arrow keys | Move the caret or completion selection. |
+| `Ctrl+←` / `Ctrl+→` or `Alt+←` / `Alt+→` | Move by word. |
+| `Alt+↑` / `Alt+↓` | Move the current line up/down. |
 | `Home` / `End` | Move to the start/end of the line. |
 | `Backspace` / `Delete` | Delete a grapheme or join lines. |
 | `Ctrl+Backspace` / `Alt+Backspace` / `Ctrl+W` | Delete the previous word. |
-| `Ctrl+Enter` | Insert a line below with the current indentation. |
+| `Ctrl+Delete` | Delete the rest of the current/next word. |
+| `Ctrl+Enter` / `Shift+Enter` | Insert an indented line below/above without changing the current line. |
 | `Page Up` / `Page Down` | Move by one viewport. |
 
 Completion also opens after `@`, `[`, or `/` in a valid context.

@@ -31,31 +31,70 @@ func TestDecoderPreservesCharacterAfterEscape(t *testing.T) {
 		t.Fatalf("flush=%#v", keys)
 	}
 }
-func TestWordDeleteAndCtrlEnterSequences(t *testing.T) {
-	d := new(inputDecoder)
-	keys := d.Feed([]byte{23, 0x1b, 127})
-	if len(keys) != 2 || keys[0].Kind != KeyDeleteWord || keys[1].Kind != KeyDeleteWord {
-		t.Fatalf("word keys=%#v", keys)
+func TestModifiedKeySequences(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+		want KeyKind
+	}{
+		{"ctrl-w", []byte{23}, KeyDeleteWord},
+		{"kitty-ctrl-w", []byte("\x1b[119;5u"), KeyDeleteWord},
+		{"kitty-ctrl-s", []byte("\x1b[115;5u"), KeySave},
+		{"xterm-ctrl-s", []byte("\x1b[27;5;115~"), KeySave},
+		{"xterm-ctrl-x", []byte("\x1b[27;5;120~"), KeyCancel},
+		{"xterm-ctrl-space", []byte("\x1b[27;5;32~"), KeyComplete},
+		{"kitty-enter", []byte("\x1b[13u"), KeyEnter},
+		{"kitty-escape", []byte("\x1b[27u"), KeyEscape},
+		{"kitty-backspace", []byte("\x1b[127u"), KeyBackspace},
+		{"alt-backspace", []byte{0x1b, 127}, KeyDeleteWord},
+		{"ctrl-backspace", []byte("\x1b[27;5;127~"), KeyDeleteWord},
+		{"ctrl-delete", []byte("\x1b[3;5~"), KeyDeleteWordForward},
+		{"alt-left-csi", []byte("\x1b[1;3D"), KeyWordLeft},
+		{"ctrl-left", []byte("\x1b[1;5D"), KeyWordLeft},
+		{"alt-left-meta", []byte("\x1bb"), KeyWordLeft},
+		{"alt-left-kitty", []byte("\x1b[98;3u"), KeyWordLeft},
+		{"alt-left-xterm", []byte("\x1b[27;3;98~"), KeyWordLeft},
+		{"alt-right-csi", []byte("\x1b[1;3C"), KeyWordRight},
+		{"ctrl-right", []byte("\x1b[1;5C"), KeyWordRight},
+		{"alt-right-meta", []byte("\x1bf"), KeyWordRight},
+		{"alt-right-kitty", []byte("\x1b[102;3u"), KeyWordRight},
+		{"ctrl-shift-s-csi-u", []byte("\x1b[115;6u"), KeySaveWithoutExit},
+		{"ctrl-shift-s-xterm", []byte("\x1b[27;6;83~"), KeySaveWithoutExit},
+		{"alt-up", []byte("\x1b[1;3A"), KeyMoveLineUp},
+		{"alt-down", []byte("\x1b[1;3B"), KeyMoveLineDown},
+		{"ctrl-enter", []byte("\x1b[13;5u"), KeyInsertLineBelow},
+		{"shift-enter", []byte("\x1b[13;2u"), KeyInsertLineAbove},
+		{"legacy-ctrl-enter", []byte{'\n'}, KeyInsertLineBelow},
 	}
-	d = new(inputDecoder)
-	keys = d.Feed([]byte{8})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			keys := new(inputDecoder).Feed(test.data)
+			if len(keys) != 1 || keys[0].Kind != test.want {
+				t.Fatalf("keys=%#v want kind=%v", keys, test.want)
+			}
+		})
+	}
+
+	keys := new(inputDecoder).Feed([]byte{8})
 	if len(keys) != 1 || keys[0].Kind != KeyBackspace {
 		t.Fatalf("ambiguous BS key=%#v", keys)
 	}
-	d = new(inputDecoder)
-	keys = d.Feed([]byte("\x1b[27;5;127~"))
-	if len(keys) != 1 || keys[0].Kind != KeyDeleteWord {
-		t.Fatalf("xterm word key=%#v", keys)
-	}
-	d = new(inputDecoder)
-	keys = d.Feed([]byte("\x1b[13;5u\x1b[27;5;13~"))
-	if len(keys) != 2 || keys[0].Kind != KeyInsertLineBelow || keys[1].Kind != KeyInsertLineBelow {
-		t.Fatalf("ctrl-enter keys=%#v", keys)
-	}
-	d = new(inputDecoder)
-	keys = d.Feed([]byte{'\n'})
-	if len(keys) != 1 || keys[0].Kind != KeyInsertLineBelow {
-		t.Fatalf("LF key=%#v", keys)
+}
+
+func TestModifiedPrintableRuneSequences(t *testing.T) {
+	for name, test := range map[string]struct {
+		data []byte
+		want rune
+	}{
+		"xterm-shift-letter": {[]byte("\x1b[27;2;65~"), 'A'},
+		"kitty-alt-letter":   {[]byte("\x1b[120;3u"), 'x'},
+	} {
+		t.Run(name, func(t *testing.T) {
+			keys := new(inputDecoder).Feed(test.data)
+			if len(keys) != 1 || keys[0].Kind != KeyRune || keys[0].Rune != test.want {
+				t.Fatalf("keys=%#v want rune=%q", keys, test.want)
+			}
+		})
 	}
 }
 

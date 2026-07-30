@@ -39,14 +39,18 @@ func TestBufferEditUnicodeAndSave(t *testing.T) {
 	}
 }
 func TestAutoPairAndBackspace(t *testing.T) {
-	e := &Editor{buffer: &Buffer{Lines: [][]rune{{}}}}
-	e.handle(Key{Kind: KeyRune, Rune: '['})
-	if e.buffer.Text() != "[]" || e.buffer.Col != 1 {
-		t.Fatalf("pair text=%q col=%d", e.buffer.Text(), e.buffer.Col)
-	}
-	e.handle(Key{Kind: KeyBackspace})
-	if e.buffer.Text() != "" || e.buffer.Col != 0 {
-		t.Fatalf("pair delete text=%q col=%d", e.buffer.Text(), e.buffer.Col)
+	for open, want := range map[rune]string{'[': "[]", '(': "()", '{': "{}"} {
+		t.Run(string(open), func(t *testing.T) {
+			e := &Editor{buffer: &Buffer{Lines: [][]rune{{}}}}
+			e.handle(Key{Kind: KeyRune, Rune: open})
+			if e.buffer.Text() != want || e.buffer.Col != 1 {
+				t.Fatalf("pair text=%q col=%d", e.buffer.Text(), e.buffer.Col)
+			}
+			e.handle(Key{Kind: KeyBackspace})
+			if e.buffer.Text() != "" || e.buffer.Col != 0 {
+				t.Fatalf("pair delete text=%q col=%d", e.buffer.Text(), e.buffer.Col)
+			}
+		})
 	}
 }
 
@@ -67,14 +71,76 @@ func TestDeleteWordBackward(t *testing.T) {
 	}
 }
 
-func TestInsertLineBelowPreservesFocusedLine(t *testing.T) {
+func TestWordMovementAndDeleteForward(t *testing.T) {
+	b := &Buffer{Lines: [][]rune{[]rune("olá  mundo ✈️")}}
+	b.WordRight()
+	if b.Col != 5 {
+		t.Fatalf("first word right col=%d", b.Col)
+	}
+	b.WordRight()
+	if b.Col != 11 {
+		t.Fatalf("second word right col=%d", b.Col)
+	}
+	b.WordLeft()
+	if b.Col != 5 {
+		t.Fatalf("word left col=%d", b.Col)
+	}
+	b.Col = 7
+	b.DeleteWordForward()
+	if got := b.Text(); got != "olá  mu ✈️" || b.Col != 7 {
+		t.Fatalf("forward delete text=%q col=%d", got, b.Col)
+	}
+	b.DeleteWordForward()
+	if got := b.Text(); got != "olá  mu" {
+		t.Fatalf("forward grapheme delete text=%q", got)
+	}
+}
+
+func TestWordMovementCrossesLines(t *testing.T) {
+	b := &Buffer{Lines: [][]rune{[]rune("one"), []rune("two")}, Col: 3}
+	b.WordRight()
+	if b.Row != 1 || b.Col != 0 {
+		t.Fatalf("right row=%d col=%d", b.Row, b.Col)
+	}
+	b.WordLeft()
+	if b.Row != 0 || b.Col != 3 {
+		t.Fatalf("left row=%d col=%d", b.Row, b.Col)
+	}
+}
+
+func TestInsertLinesPreserveFocusedLine(t *testing.T) {
 	b := &Buffer{Lines: [][]rune{[]rune("  keep this"), []rune("next")}, Row: 0, Col: 6}
 	b.InsertLineBelow()
 	if got := b.Text(); got != "  keep this\n  \nnext" {
-		t.Fatalf("text=%q", got)
+		t.Fatalf("below text=%q", got)
 	}
 	if b.Row != 1 || b.Col != 2 {
-		t.Fatalf("row=%d col=%d", b.Row, b.Col)
+		t.Fatalf("below row=%d col=%d", b.Row, b.Col)
+	}
+
+	b = &Buffer{Lines: [][]rune{[]rune("first"), []rune("\tkeep this")}, Row: 1, Col: 5}
+	b.InsertLineAbove()
+	if got := b.Text(); got != "first\n\t\n\tkeep this" {
+		t.Fatalf("above text=%q", got)
+	}
+	if b.Row != 1 || b.Col != 1 {
+		t.Fatalf("above row=%d col=%d", b.Row, b.Col)
+	}
+}
+
+func TestMoveLine(t *testing.T) {
+	b := &Buffer{Lines: [][]rune{[]rune("one"), []rune("two"), []rune("three")}, Row: 1, Col: 2}
+	b.MoveLineUp()
+	if got := b.Text(); got != "two\none\nthree" || b.Row != 0 || b.Col != 2 {
+		t.Fatalf("up text=%q row=%d col=%d", got, b.Row, b.Col)
+	}
+	b.MoveLineUp()
+	if got := b.Text(); got != "two\none\nthree" || b.Version != 1 {
+		t.Fatalf("top move changed buffer: text=%q version=%d", got, b.Version)
+	}
+	b.MoveLineDown()
+	if got := b.Text(); got != "one\ntwo\nthree" || b.Row != 1 || b.Col != 2 {
+		t.Fatalf("down text=%q row=%d col=%d", got, b.Row, b.Col)
 	}
 }
 
@@ -115,6 +181,33 @@ func TestCancelModalOwnsLiquidCursorFocus(t *testing.T) {
 func TestCompletionWindowFollowsSelection(t *testing.T) {
 	if start := completionWindow(250, 500, 8); start > 250 || start+8 <= 250 {
 		t.Fatalf("window start=%d", start)
+	}
+}
+
+func TestSaveWithoutExitPersistsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt.md")
+	b := &Buffer{Path: path, Lines: [][]rune{[]rune("saved")}, Dirty: true, Version: 1}
+	e := &Editor{buffer: b}
+	changed, complete, exit := e.handle(Key{Kind: KeySaveWithoutExit})
+	if changed || complete || exit != 0 {
+		t.Fatalf("changed=%v complete=%v exit=%d", changed, complete, exit)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "saved" || b.Dirty || e.status != "saved" {
+		t.Fatalf("data=%q dirty=%v status=%q", data, b.Dirty, e.status)
+	}
+}
+
+func TestSaveWithoutExitDoesNotWriteUntitled(t *testing.T) {
+	e := &Editor{buffer: &Buffer{Lines: [][]rune{[]rune("draft")}}, anonymous: true}
+	if _, _, exit := e.handle(Key{Kind: KeySaveWithoutExit}); exit != 0 {
+		t.Fatalf("exit=%d", exit)
+	}
+	if !strings.Contains(e.status, "Ctrl+S") {
+		t.Fatalf("status=%q", e.status)
 	}
 }
 

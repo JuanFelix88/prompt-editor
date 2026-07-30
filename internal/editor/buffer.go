@@ -78,18 +78,36 @@ func (b *Buffer) InsertText(s string) {
 		}
 	}
 }
-func (b *Buffer) InsertLineBelow() {
-	line := b.Lines[b.Row]
-	indentEnd := 0
-	for indentEnd < len(line) && (line[indentEnd] == ' ' || line[indentEnd] == '\t') {
-		indentEnd++
+func lineIndent(line []rune) []rune {
+	end := 0
+	for end < len(line) && (line[end] == ' ' || line[end] == '\t') {
+		end++
 	}
-	indent := append([]rune(nil), line[:indentEnd]...)
-	at := b.Row + 1
+	return append([]rune(nil), line[:end]...)
+}
+func (b *Buffer) insertLine(at int, line []rune) {
 	b.Lines = append(b.Lines, nil)
 	copy(b.Lines[at+1:], b.Lines[at:])
-	b.Lines[at] = indent
-	b.Row, b.Col = at, len(indent)
+	b.Lines[at] = line
+	b.Row, b.Col = at, len(line)
+	b.touch()
+}
+func (b *Buffer) InsertLineBelow() { b.insertLine(b.Row+1, lineIndent(b.Lines[b.Row])) }
+func (b *Buffer) InsertLineAbove() { b.insertLine(b.Row, lineIndent(b.Lines[b.Row])) }
+func (b *Buffer) MoveLineUp() {
+	if b.Row == 0 {
+		return
+	}
+	b.Lines[b.Row-1], b.Lines[b.Row] = b.Lines[b.Row], b.Lines[b.Row-1]
+	b.Row--
+	b.touch()
+}
+func (b *Buffer) MoveLineDown() {
+	if b.Row+1 >= len(b.Lines) {
+		return
+	}
+	b.Lines[b.Row], b.Lines[b.Row+1] = b.Lines[b.Row+1], b.Lines[b.Row]
+	b.Row++
 	b.touch()
 }
 
@@ -116,22 +134,17 @@ func classifyGrapheme(cluster []rune) wordClass {
 	}
 	return wordOther
 }
-func (b *Buffer) DeleteWordBackward() {
-	if b.Col == 0 {
-		b.Backspace()
-		return
+func graphemeIndex(bounds []int, col int) int {
+	for i, bound := range bounds {
+		if bound >= col {
+			return i
+		}
 	}
-	line, end := b.Lines[b.Row], b.Col
+	return len(bounds) - 1
+}
+func wordStart(line []rune, col int) int {
 	bounds := graphemeBounds(line)
-	clusterEnd := 1
-	for clusterEnd < len(bounds) && bounds[clusterEnd] < end {
-		clusterEnd++
-	}
-	if clusterEnd >= len(bounds) {
-		clusterEnd = len(bounds) - 1
-	}
-	end = bounds[clusterEnd]
-	i := clusterEnd
+	i := graphemeIndex(bounds, col)
 	for i > 0 && classifyGrapheme(line[bounds[i-1]:bounds[i]]) == wordSpace {
 		i--
 	}
@@ -141,10 +154,71 @@ func (b *Buffer) DeleteWordBackward() {
 			i--
 		}
 	}
-	start := bounds[i]
+	return bounds[i]
+}
+func wordEnd(line []rune, col int, includeTrailingSpace bool) int {
+	bounds := graphemeBounds(line)
+	i := graphemeIndex(bounds, col)
+	if i >= len(bounds)-1 {
+		return len(line)
+	}
+	if classifyGrapheme(line[bounds[i]:bounds[i+1]]) == wordSpace {
+		for i < len(bounds)-1 && classifyGrapheme(line[bounds[i]:bounds[i+1]]) == wordSpace {
+			i++
+		}
+		if !includeTrailingSpace && i < len(bounds)-1 {
+			class := classifyGrapheme(line[bounds[i]:bounds[i+1]])
+			for i < len(bounds)-1 && classifyGrapheme(line[bounds[i]:bounds[i+1]]) == class {
+				i++
+			}
+		}
+		return bounds[i]
+	}
+	class := classifyGrapheme(line[bounds[i]:bounds[i+1]])
+	for i < len(bounds)-1 && classifyGrapheme(line[bounds[i]:bounds[i+1]]) == class {
+		i++
+	}
+	if includeTrailingSpace {
+		for i < len(bounds)-1 && classifyGrapheme(line[bounds[i]:bounds[i+1]]) == wordSpace {
+			i++
+		}
+	}
+	return bounds[i]
+}
+func (b *Buffer) DeleteWordBackward() {
+	if b.Col == 0 {
+		b.Backspace()
+		return
+	}
+	line, end := b.Lines[b.Row], b.Col
+	start := wordStart(line, end)
 	b.Lines[b.Row] = append(line[:start], line[end:]...)
 	b.Col = start
 	b.touch()
+}
+func (b *Buffer) DeleteWordForward() {
+	line := b.Lines[b.Row]
+	if b.Col == len(line) {
+		b.Delete()
+		return
+	}
+	end := wordEnd(line, b.Col, false)
+	b.Lines[b.Row] = append(line[:b.Col], line[end:]...)
+	b.touch()
+}
+func (b *Buffer) WordLeft() {
+	if b.Col == 0 {
+		b.Left()
+		return
+	}
+	b.Col = wordStart(b.Lines[b.Row], b.Col)
+}
+func (b *Buffer) WordRight() {
+	if b.Col == len(b.Lines[b.Row]) {
+		b.Right()
+		return
+	}
+	b.Col = wordEnd(b.Lines[b.Row], b.Col, true)
 }
 
 func (b *Buffer) Newline() {
