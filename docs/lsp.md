@@ -32,6 +32,7 @@ promptHeading4
 promptHeading5
 promptHeading6
 promptItem
+promptStarItem
 ```
 
 ## Lifecycle e transporte

@@ -78,6 +78,40 @@ func TestTraversalAndMarkdownActivation(t *testing.T) {
 		t.Fatal("markdown got no semantic tokens")
 	}
 }
+func TestPromptItemSemanticTokens(t *testing.T) {
+	root := t.TempDir()
+	s, _ := NewService(root)
+	uri := PathToURI(filepath.Join(root, "prompt.md"))
+	s.Documents.Open(uri, "- red\n  * blue\n+ structural only\n*not-an-item")
+
+	tokens := s.Semantic(uri)
+	if len(tokens) != 2 {
+		t.Fatalf("tokens=%#v", tokens)
+	}
+	if tokens[0].Line != 0 || tokens[0].Start != 0 || tokens[0].Length != 5 || tokens[0].Kind != TokenPromptItem {
+		t.Errorf("hyphen item token=%#v", tokens[0])
+	}
+	if tokens[1].Line != 1 || tokens[1].Start != 2 || tokens[1].Length != 6 || tokens[1].Kind != TokenPromptStarItem {
+		t.Errorf("star item token=%#v", tokens[1])
+	}
+
+	s.Documents.Change(uri, "* use @missing")
+	tokens = s.Semantic(uri)
+	if len(tokens) != 2 || tokens[0].Kind != TokenPromptStarItem || tokens[0].Start != 0 || tokens[0].Length != 6 || tokens[1].Kind != TokenFileMissing || tokens[1].Start != 6 {
+		t.Fatalf("star item with reference tokens=%#v", tokens)
+	}
+}
+
+func TestPromptStarItemSemanticEncoding(t *testing.T) {
+	if TokenPromptStarItem != TokenPromptItem+1 || PlainTokenName(TokenPromptStarItem) != "promptStarItem" {
+		t.Fatalf("star item legend index=%d name=%q", TokenPromptStarItem, PlainTokenName(TokenPromptStarItem))
+	}
+	data := EncodeSemantic([]SemanticToken{{Line: 0, Start: 2, Length: 4, Kind: TokenPromptStarItem}})
+	if len(data) != 5 || data[0] != 0 || data[1] != 2 || data[2] != 4 || data[3] != int(TokenPromptStarItem) || data[4] != 0 {
+		t.Fatalf("encoded star item=%v", data)
+	}
+}
+
 func TestSemanticTokensDoNotOverlap(t *testing.T) {
 	root := t.TempDir()
 	s, _ := NewService(root)

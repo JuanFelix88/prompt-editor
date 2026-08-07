@@ -28,8 +28,9 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 | `Ctrl+Shift+S` | com arquivo, grava atomicamente sem fechar; sem arquivo, mantém o buffer aberto e exibe um aviso |
 | `Ctrl+X` / `Ctrl+C` | abre confirmação; `y` descarta e fecha com código 130, `n`/`Esc`/`Enter` continua |
 | `Ctrl+Space` | abre/atualiza completion |
+| `Ctrl+G` | abre “Ir para linha”; informe `linha` ou `linha:coluna` e pressione Enter |
 | `Tab` ou `Enter` | aceita completion; sem popup, insere tab/newline |
-| `Esc` | fecha completion |
+| `Esc` | fecha completion ou “Ir para linha” |
 | `↑` / `↓` | move caret ou seleção do popup |
 | `←` / `→` | move por grapheme |
 | `Ctrl+←` / `Ctrl+→` ou `Alt+←` / `Alt+→` | move por palavra |

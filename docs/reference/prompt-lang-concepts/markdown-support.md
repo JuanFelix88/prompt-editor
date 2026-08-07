@@ -69,7 +69,7 @@ The query layer and prompt server are independent, which creates important bound
 
 - The heading scanner is fence-aware. It ignores ATX-looking lines between matching backtick or tilde fences. A closer must use the same character and at least the opener's length. An unclosed fence suppresses all later heading targets.
 - File references, heading-reference brackets, completions, hover, navigation, and prompt semantic-reference scanning are line/regex based and are **not** excluded inside fenced code, indented code, inline code, HTML, or metadata.
-- Hyphen-list semantic styling is also syntax-agnostic and can apply to `- ` lines inside a fence.
+- Prompt-item semantic styling is also syntax-agnostic and can apply to `- ` and `* ` lines inside a fence.
 - Fence detection for heading indexing only handles fences indented zero to three spaces. It does not model container prefixes such as block quotes as fully as the Markdown parser does.
 
 Thus embedding changes parsing/highlighting for fence content, but it does not create an IntelliSense isolation boundary for prompt notation.
@@ -93,7 +93,7 @@ The server does not implement diagnostics, code actions, reference search, renam
 
 The language configuration and server predicate both recognize the broad, case-insensitive suffixes `md` and `prompt`. Prompt IntelliSense and prompt-reference semantics therefore apply to every `.md` and `.prompt` file.
 
-Reference and hyphen-list semantic tokens are suffix-gated, while ATX heading semantic tokens are generated regardless of the filename. Whether those tokens are observed depends on which documents are connected to this language/server.
+Reference and prompt-item semantic tokens are suffix-gated, while ATX heading semantic tokens are generated regardless of the filename. Whether those tokens are observed depends on which documents are connected to this language/server.
 
 Non-file URIs cannot satisfy the prompt filename predicate because URI conversion must produce a filesystem path. Filename matching is case-insensitive, while reference existence follows platform filesystem behavior.
 

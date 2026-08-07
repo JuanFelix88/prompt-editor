@@ -175,8 +175,12 @@ func (s *Service) semantic(uri string, cachedStatus bool) []SemanticToken {
 			for i < len(rs) && (rs[i] == ' ' || rs[i] == '\t') {
 				i++
 			}
-			if i < len(rs) && rs[i] == '-' && i+1 < len(rs) && (rs[i+1] == ' ' || rs[i+1] == '\t') {
-				addSplit(&tokens, n, runeToUTF16(rs, i), UTF16Len(line), TokenPromptItem, refs)
+			if i < len(rs) && (rs[i] == '-' || rs[i] == '*') && i+1 < len(rs) && (rs[i+1] == ' ' || rs[i+1] == '\t') {
+				kind := TokenPromptItem
+				if rs[i] == '*' {
+					kind = TokenPromptStarItem
+				}
+				addSplit(&tokens, n, runeToUTF16(rs, i), UTF16Len(line), kind, refs)
 			}
 			for _, r := range refs {
 				kind := TokenHeadingRefMissing

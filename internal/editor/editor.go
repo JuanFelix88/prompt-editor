@@ -40,19 +40,21 @@ func (e *Editor) terminalTitle() string {
 }
 
 type Editor struct {
-	buffer                           *Buffer
-	service                          *lang.Service
-	uri                              string
-	top, hscroll                     int
-	rows, cols                       int
-	completions                      []lang.Completion
-	selected                         int
-	tokens                           []lang.SemanticToken
-	structureVersion                 uint64
-	insideFence, delimiter, metadata []bool
-	status                           string
-	anonymous, confirmCancel         bool
-	output                           *os.File
+	buffer                             *Buffer
+	service                            *lang.Service
+	uri                                string
+	top, hscroll                       int
+	rows, cols                         int
+	completions                        []lang.Completion
+	selected                           int
+	tokens                             []lang.SemanticToken
+	structureVersion                   uint64
+	insideFence, delimiter, metadata   []bool
+	status                             string
+	gotoInput, gotoError               string
+	openedAt                           time.Time
+	anonymous, confirmCancel, gotoOpen bool
+	output                             *os.File
 }
 
 func New(path, workspace string, line, column int) (*Editor, error) {
@@ -90,19 +92,23 @@ func (e *Editor) Run() (string, error) {
 	if !term.IsTerminal(fd) {
 		return "", errors.New("stdin is not an interactive terminal")
 	}
-	old, err := term.MakeRaw(fd)
-	if err != nil {
-		return "", err
-	}
 	e.output = os.Stderr
 	if !e.anonymous && !term.IsTerminal(int(os.Stderr.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		e.output = os.Stdout
+	}
+	if !term.IsTerminal(int(e.output.Fd())) {
+		return "", errors.New("editor output is not an interactive terminal")
+	}
+	old, err := term.MakeRaw(fd)
+	if err != nil {
+		return "", err
 	}
 	cleanup := func() {
 		_, _ = io.WriteString(e.output, disableKeyboardEnhancements+"\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
 		_ = term.Restore(fd, old)
 	}
 	defer cleanup()
+	e.openedAt = time.Now()
 	_, _ = io.WriteString(e.output, e.terminalTitle()+"\x1b[?1049h\x1b[2J\x1b[H"+enableKeyboardEnhancements+"\x1b[?2004h\x1b[?25h")
 
 	done := make(chan struct{})
@@ -112,6 +118,8 @@ func (e *Editor) Run() (string, error) {
 	signal.Notify(interrupt, terminationSignals()...)
 	defer signal.Stop(interrupt)
 	keys, inputErr := startInput(os.Stdin)
+	clock := time.NewTicker(time.Second)
+	defer clock.Stop()
 	var timer *time.Timer
 	var analysis <-chan time.Time
 	schedule := func() {
@@ -155,6 +163,10 @@ func (e *Editor) Run() (string, error) {
 				if err = e.render(); err != nil {
 					return "", err
 				}
+			}
+		case <-clock.C:
+			if err = e.renderElapsed(); err != nil {
+				return "", err
 			}
 		case <-analysis:
 			e.service.Documents.Change(e.uri, e.buffer.Text())
@@ -220,8 +232,59 @@ func (e *Editor) saveWithoutExit() {
 	e.status = "saved"
 }
 
+func parseGotoInput(input string) (line, column int, ok bool) {
+	parts := strings.Split(input, ":")
+	if len(parts) == 1 {
+		line, err := strconv.Atoi(parts[0])
+		return line, 1, err == nil
+	}
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	line, lineErr := strconv.Atoi(parts[0])
+	column, columnErr := strconv.Atoi(parts[1])
+	return line, column, lineErr == nil && columnErr == nil
+}
+
+func (e *Editor) handleGoto(k Key) {
+	switch k.Kind {
+	case KeyEscape, KeyCancel:
+		e.gotoOpen, e.gotoError = false, ""
+	case KeyEnter:
+		line, column, ok := parseGotoInput(e.gotoInput)
+		if !ok {
+			e.gotoError = "formato inválido; use linha:coluna"
+			return
+		}
+		e.buffer.SetPosition(line, column)
+		e.gotoOpen, e.gotoError = false, ""
+	case KeyBackspace:
+		runes := []rune(e.gotoInput)
+		if len(runes) > 0 {
+			e.gotoInput = string(runes[:len(runes)-1])
+		}
+		e.gotoError = ""
+	case KeyRune:
+		if k.Rune >= '0' && k.Rune <= '9' || k.Rune == ':' {
+			e.gotoInput += string(k.Rune)
+			e.gotoError = ""
+		}
+	case KeyPaste:
+		for _, r := range k.Text {
+			if r >= '0' && r <= '9' || r == ':' {
+				e.gotoInput += string(r)
+			}
+		}
+		e.gotoError = ""
+	}
+}
+
 func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	before := e.buffer.Version
+	if e.gotoOpen {
+		e.handleGoto(k)
+		return false, false, 0
+	}
 	if e.confirmCancel {
 		if k.Kind == KeyRune && (k.Rune == 'y' || k.Rune == 'Y') {
 			return false, false, -1
@@ -243,6 +306,9 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 		return false, false, 0
 	case KeyEscape:
 		e.completions = nil
+	case KeyGoTo:
+		e.completions = nil
+		e.gotoInput, e.gotoError, e.gotoOpen = "", "", true
 	case KeyComplete:
 		complete = true
 	case KeyTab:
@@ -436,7 +502,9 @@ func tokenStyle(k lang.TokenKind) string {
 	case lang.TokenHeading3, lang.TokenHeading6:
 		return "\x1b[38;5;220m"
 	case lang.TokenPromptItem:
-		return "\x1b[38;5;203m"
+		return "\x1b[31m"
+	case lang.TokenPromptStarItem:
+		return "\x1b[34m"
 	}
 	return "\x1b[0m"
 }
@@ -704,6 +772,42 @@ func renderContent(rs []rune, styles []string, start, maxWidth int) string {
 	b.WriteString("\x1b[0m")
 	return b.String()
 }
+func formatElapsed(elapsed time.Duration) string {
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	seconds := int(elapsed / time.Second)
+	hours := seconds / 3600
+	minutes := seconds % 3600 / 60
+	seconds %= 60
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func (e *Editor) statusBar(now time.Time) string {
+	status := e.status
+	if e.buffer.Dirty {
+		status = "● " + status
+	}
+	name := filepathBase(e.buffer.Path)
+	if e.anonymous {
+		name = "[No Name]"
+	}
+	status = " " + name + "  " + status
+
+	width := max(0, e.cols-1)
+	elapsed := time.Duration(0)
+	if !e.openedAt.IsZero() {
+		elapsed = now.Sub(e.openedAt)
+	}
+	timer := clipPlain("Tempo "+formatElapsed(elapsed), width)
+	remaining := width - visualWidth([]rune(timer))
+	left := clipPlain(status, remaining)
+	return left + strings.Repeat(" ", max(0, remaining-visualWidth([]rune(left)))) + timer
+}
+
 func clipPlain(s string, width int) string {
 	if width <= 0 {
 		return ""
@@ -745,29 +849,43 @@ func (e *Editor) frame() string {
 		frame.WriteString(renderContent(rs, e.stylesFor(line, rs, insideFence[line], delimiter[line], metadata[line]), e.hscroll, max(0, lineWidth)))
 	}
 	if e.rows >= 2 {
-		status := e.status
-		if e.buffer.Dirty {
-			status = "● " + status
-		}
-		name := filepathBase(e.buffer.Path)
-		if e.anonymous {
-			name = "[No Name]"
-		}
-		status = " " + name + "  " + status
-		fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, clipPlain(status, max(0, e.cols-1)))
+		fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, e.statusBar(time.Now()))
 	}
 	e.renderPopup(&frame, caretRow, caretCol, editorRows)
 	focusRow, focusCol := caretRow, caretCol
-	if e.confirmCancel {
+	if e.gotoOpen {
+		prompt := " Ir para linha:coluna: " + e.gotoInput
+		if e.gotoError != "" {
+			prompt = " " + e.gotoError + " " + e.gotoInput
+		}
+		prompt = clipPlain(prompt, max(0, e.cols-1))
+		fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, prompt)
+		focusRow = e.rows - 1
+		focusCol = min(visualWidth([]rune(prompt)), e.cols-1)
+	} else if e.confirmCancel {
 		prompt := clipPlain(" Descartar e sair? [y/N]", max(0, e.cols-1))
 		fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, prompt)
 		focusRow = e.rows - 1
-		focusCol = min(runewidth.StringWidth(prompt), e.cols-1)
+		focusCol = min(visualWidth([]rune(prompt)), e.cols-1)
 	}
 	fmt.Fprintf(&frame, "\x1b[%d;%dH\x1b[?25h", focusRow+1, focusCol+1)
 	return frame.String()
 }
 func (e *Editor) render() error { _, err := io.WriteString(e.output, e.frame()); return err }
+
+func (e *Editor) renderElapsed() error {
+	if e.rows < 2 || e.confirmCancel || e.gotoOpen {
+		return nil
+	}
+	_, _, caretRow, caretCol := e.layout()
+	var frame strings.Builder
+	frame.Grow(e.cols + 64)
+	frame.WriteString("\x1b[?25l")
+	fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[2K\x1b[7m%s\x1b[0m", e.rows, e.statusBar(time.Now()))
+	fmt.Fprintf(&frame, "\x1b[%d;%dH\x1b[?25h", caretRow+1, caretCol+1)
+	_, err := io.WriteString(e.output, frame.String())
+	return err
+}
 func filepathBase(path string) string {
 	path = strings.ReplaceAll(path, "\\", "/")
 	if i := strings.LastIndex(path, "/"); i >= 0 {

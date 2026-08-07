@@ -159,7 +159,7 @@ A semantic request performs a whole-document pass:
 2. for every line, collect prompt reference ranges when prompt behavior is enabled;
 3. classify each reference by live file status or heading resolution;
 4. emit heading-marker and level-specific heading-text categories;
-5. on prompt documents, emit the hyphen-list category;
+5. on prompt documents, emit distinct categories for `-` and `*` list items;
 6. split broad heading or list spans around reference ranges;
 7. emit references into the resulting gaps;
 8. sort all tokens by line and start position; and

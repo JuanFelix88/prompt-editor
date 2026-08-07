@@ -130,8 +130,9 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 | `Ctrl+Shift+S` | Save a file without closing the editor. Untitled buffers remain open and unchanged. |
 | `Ctrl+X` / `Ctrl+C` | Ask before discarding changes; confirmed cancellation exits with code 130. |
 | `Ctrl+Space` | Open or refresh completion. |
+| `Ctrl+G` | Open Go to Line; enter `line` or `line:column`, then press Enter. |
 | `Tab` / `Enter` | Accept completion, or insert a tab/newline when no popup is open. |
-| `Esc` | Close completion or cancel a discard prompt. |
+| `Esc` | Close completion, Go to Line, or cancel a discard prompt. |
 | Arrow keys | Move the caret or completion selection. |
 | `Ctrl+←` / `Ctrl+→` or `Alt+←` / `Alt+→` | Move by word. |
 | `Alt+↑` / `Alt+↓` | Move the current line up/down. |

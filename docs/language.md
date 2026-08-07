@@ -27,7 +27,7 @@ Somente headings ATX de 1 a 6 níveis entram na hierarquia; headings dentro de f
 
 ## Prompt items
 
-Uma linha `- item` recebe token semântico de prompt item. `*`, `+` e listas ordenadas mantêm apenas estilo Markdown estrutural. Referências dentro de um item ou heading têm precedência e dividem o span amplo.
+Linhas `- item` e `* item` recebem tokens semânticos de prompt item. Na TUI, `-` usa o vermelho e `*` usa o azul da paleta ANSI configurada no terminal. `+` e listas ordenadas mantêm apenas estilo Markdown estrutural. Referências dentro de um item ou heading têm precedência e dividem o span amplo.
 
 ## IntelliSense
 

@@ -67,12 +67,13 @@ const (
 	TokenHeading5
 	TokenHeading6
 	TokenPromptItem
+	TokenPromptStarItem
 )
 
 var SemanticLegend = []string{
 	"promptFile", "promptFileMissing", "promptHeadingReference", "promptHeadingReferenceMissing",
 	"promptHeadingMarker", "promptHeading1", "promptHeading2", "promptHeading3",
-	"promptHeading4", "promptHeading5", "promptHeading6", "promptItem",
+	"promptHeading4", "promptHeading5", "promptHeading6", "promptItem", "promptStarItem",
 }
 
 type SemanticToken struct {

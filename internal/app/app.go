@@ -165,5 +165,5 @@ Usage:
   prompt-cli version
 
 Without FILE, Ctrl+S returns Markdown on stdout without writing to disk.
-Inside the editor: Ctrl+S confirms, Ctrl+X/Ctrl+C asks before canceling, Ctrl+Space completes.`)
+Inside the editor: Ctrl+S confirms, Ctrl+X/Ctrl+C asks before canceling, Ctrl+G goes to a line, Ctrl+Space completes.`)
 }

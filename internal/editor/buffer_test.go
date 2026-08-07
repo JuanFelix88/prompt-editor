@@ -122,6 +122,47 @@ func TestDocumentHomeAndEnd(t *testing.T) {
 	}
 }
 
+func TestGoToLineAndColumnClampsToDocumentAndGraphemes(t *testing.T) {
+	e := &Editor{buffer: &Buffer{Lines: [][]rune{[]rune("first"), []rune("界e\u0301")}, Row: 0, Col: 2}}
+	e.handle(Key{Kind: KeyGoTo})
+	for _, r := range "99:99" {
+		e.handle(Key{Kind: KeyRune, Rune: r})
+	}
+	e.handle(Key{Kind: KeyEnter})
+	if e.gotoOpen || e.buffer.Row != 1 || e.buffer.Col != len(e.buffer.Lines[1]) {
+		t.Fatalf("goto row=%d col=%d open=%v", e.buffer.Row, e.buffer.Col, e.gotoOpen)
+	}
+
+	e.handle(Key{Kind: KeyGoTo})
+	for _, r := range "0:0" {
+		e.handle(Key{Kind: KeyRune, Rune: r})
+	}
+	e.handle(Key{Kind: KeyEnter})
+	if e.buffer.Row != 0 || e.buffer.Col != 0 {
+		t.Fatalf("lower clamp row=%d col=%d", e.buffer.Row, e.buffer.Col)
+	}
+
+	e.handle(Key{Kind: KeyGoTo})
+	e.handle(Key{Kind: KeyRune, Rune: ':'})
+	e.handle(Key{Kind: KeyEnter})
+	if !e.gotoOpen || e.gotoError == "" || e.buffer.Row != 0 || e.buffer.Col != 0 {
+		t.Fatalf("invalid goto open=%v error=%q row=%d col=%d", e.gotoOpen, e.gotoError, e.buffer.Row, e.buffer.Col)
+	}
+	e.handle(Key{Kind: KeyEscape})
+	if e.gotoOpen {
+		t.Fatal("escape did not close go-to prompt")
+	}
+}
+
+func TestGoToModalOwnsLiquidCursorFocus(t *testing.T) {
+	e := &Editor{buffer: &Buffer{Lines: [][]rune{[]rune("text")}}, rows: 24, cols: 80, gotoOpen: true, gotoInput: "12:4"}
+	prompt := clipPlain(" Ir para linha:coluna: 12:4", e.cols-1)
+	want := fmt.Sprintf("\x1b[%d;%dH\x1b[?25h", e.rows, min(visualWidth([]rune(prompt)), e.cols-1)+1)
+	if frame := e.frame(); !strings.HasSuffix(frame, want) {
+		t.Fatalf("frame does not end at go-to focus: want suffix %q", want)
+	}
+}
+
 func TestInsertLinesPreserveFocusedLine(t *testing.T) {
 	b := &Buffer{Lines: [][]rune{[]rune("  keep this"), []rune("next")}, Row: 0, Col: 6}
 	b.InsertLineBelow()

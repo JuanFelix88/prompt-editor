@@ -5,7 +5,7 @@
 The language is ordinary Markdown with a small prompt-oriented semantic layer. Its highlighting is best understood as two cooperating passes:
 
 1. **Structural highlighting** parses Markdown blocks and assigns stable, theme-oriented scopes to headings, paragraphs, lists, tables, links, code fences, and other markup.
-2. **Contextual highlighting** scans prompt documents for constructs whose meaning depends on the workspace or the current document: `@file` references, `[Heading]` references, ATX heading levels, and hyphen-led prompt items.
+2. **Contextual highlighting** scans prompt documents for constructs whose meaning depends on the workspace or the current document: `@file` references, `[Heading]` references, ATX heading levels, and `-`/`*` prompt items.
 
 The second pass is not a replacement for the Markdown parser. It overlays narrower semantic ranges on broad structural ranges. A faithful implementation must give those narrower ranges precedence and must avoid emitting overlapping semantic ranges.
 
@@ -153,16 +153,16 @@ The heading text range excludes trailing spaces and a valid closing `#` sequence
 
 A reference occurring inside heading text keeps its reference-specific color. The surrounding heading token is split into segments before and after the reference so that no semantic ranges overlap.
 
-### Hyphen-led prompt items
+### Prompt items
 
-Any prompt-document line matching `^(\s*)-\s+` is treated as a prompt item. Coloring begins at the hyphen and continues to the end of the physical line. The supplied mapping uses a string-like role; the intended visual design is red where the active theme maps that role accordingly. Unlike missing-reference colors, no fixed foreground is provided, so exact color is theme-dependent.
+Any prompt-document line matching `^(\s*)[-*]\s+` is treated as a prompt item. Coloring begins at the list marker and continues to the end of the physical line. Hyphen items emit `promptItem`; star items emit `promptStarItem`. The terminal renderer maps these categories to ANSI standard red (`SGR 31`) and blue (`SGR 34`) respectively, so their exact colors come from the active terminal theme rather than fixed RGB values.
 
 This behavior is intentionally narrower than Markdown list syntax:
 
-- only `-` items receive whole-line semantic coloring;
-- `*`, `+`, and ordered lists receive only structural marker punctuation;
-- nested hyphen items work because arbitrary leading whitespace is accepted;
-- a hyphen without following whitespace is not an item;
+- only `-` and `*` items receive whole-line semantic coloring;
+- `+` and ordered lists receive only structural marker punctuation;
+- nested prompt items work because arbitrary leading whitespace is accepted;
+- a marker without following whitespace is not an item;
 - continuation lines are not colored;
 - task items are colored as part of the line, while `[x]` and `[X]` are excluded from heading-reference recognition.
 
@@ -217,7 +217,7 @@ To reproduce the feature in another editor or rendering host:
 5. Implement the exact file-reference boundary and path alphabet, safe root-relative resolution, and existence-dependent scopes.
 6. Build the ATX-only heading stack, normalize bracket paths, and resolve exact current-document matches.
 7. Implement lexical exclusions for tasks, images, and immediate inline links.
-8. Apply the repeating heading palette and whole-line hyphen-item scope.
+8. Apply the repeating heading palette and whole-line `-`/`*` item scopes.
 9. Split broad semantic ranges around references and enforce file-reference precedence on overlap.
 10. Convert line offsets to the host's coordinate system, especially for non-ASCII prefixes.
 11. Refresh contextual colors after text edits and relevant filesystem changes.
