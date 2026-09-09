@@ -43,6 +43,7 @@ const (
 	KeyDocumentHome
 	KeyDocumentEnd
 	KeyGoTo
+	KeyToggleKeepOpen
 )
 
 type Key struct {
@@ -148,6 +149,10 @@ func (d *inputDecoder) decode() (keys []Key) {
 			continue
 		case 7:
 			keys = append(keys, Key{Kind: KeyGoTo})
+			d.buf = d.buf[1:]
+			continue
+		case 11:
+			keys = append(keys, Key{Kind: KeyToggleKeepOpen})
 			d.buf = d.buf[1:]
 			continue
 		case 19:
@@ -257,6 +262,8 @@ func escapeKey(seq string) (Key, bool) {
 		return Key{Kind: KeyInsertLineAbove}, true
 	case "103;5u", "27;5;103~":
 		return Key{Kind: KeyGoTo}, true
+	case "107;5u", "27;5;107~":
+		return Key{Kind: KeyToggleKeepOpen}, true
 	default:
 		return Key{}, false
 	}

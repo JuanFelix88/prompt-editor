@@ -26,6 +26,7 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 | --- | --- |
 | `Ctrl+S` | com arquivo, grava atomicamente; sem arquivo, envia texto ao stdout; fecha com código 0 |
 | `Ctrl+Shift+S` | com arquivo, grava atomicamente sem fechar; sem arquivo, mantém o buffer aberto e exibe um aviso |
+| `Ctrl+K` | alterna Keep open (OFF inicialmente, apenas nesta sessão); ON impede fechar ao salvar, com estado e atalho no rodapé |
 | `Ctrl+X` / `Ctrl+C` | abre confirmação; `y` descarta e fecha com código 130, `n`/`Esc`/`Enter` continua |
 | `Ctrl+Space` | abre/atualiza completion |
 | `Ctrl+G` | abre “Ir para linha”; informe `linha` ou `linha:coluna` e pressione Enter |
@@ -44,6 +45,8 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 | `Page Up` / `Page Down` | move uma viewport |
 
 Completion também abre ao digitar `@`, `[`, ou `/` em um contexto válido. O popup nunca substitui o cursor real: o cursor permanece no caret do documento.
+
+Com Keep open ON, `Ctrl+S` grava arquivos sem fechar, inclusive quando o terminal não distingue `Ctrl+Shift+S`. Sem arquivo, o conteúdo permanece na memória, sem escrita em disco/stdout: desative com `Ctrl+K` e confirme com `Ctrl+S`.
 
 ## Saída e falhas
 

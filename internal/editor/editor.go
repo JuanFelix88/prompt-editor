@@ -54,6 +54,7 @@ type Editor struct {
 	gotoInput, gotoError               string
 	openedAt                           time.Time
 	anonymous, confirmCancel, gotoOpen bool
+	keepOpen                           bool
 	output                             *os.File
 }
 
@@ -222,7 +223,7 @@ func (e *Editor) confirm() (string, bool) {
 }
 func (e *Editor) saveWithoutExit() {
 	if e.anonymous {
-		e.status = "untitled content can only be saved with Ctrl+S"
+		e.status = "untitled not written; disable Keep open (Ctrl+K), then Ctrl+S to confirm"
 		return
 	}
 	if err := e.buffer.Save(); err != nil {
@@ -296,10 +297,17 @@ func (e *Editor) handle(k Key) (changed, complete bool, exit int) {
 	}
 	switch k.Kind {
 	case KeySave:
-		return false, false, 1
+		if !e.keepOpen {
+			return false, false, 1
+		}
+		e.completions = nil
+		e.saveWithoutExit()
 	case KeySaveWithoutExit:
 		e.completions = nil
 		e.saveWithoutExit()
+	case KeyToggleKeepOpen:
+		e.keepOpen = !e.keepOpen
+		e.completions = nil
 	case KeyCancel:
 		e.confirmCancel = true
 		e.completions = nil
@@ -795,14 +803,18 @@ func (e *Editor) statusBar(now time.Time) string {
 	if e.anonymous {
 		name = "[No Name]"
 	}
-	status = " " + name + "  " + status
+	mode := "OFF"
+	if e.keepOpen {
+		mode = "ON"
+	}
+	status = " Ctrl+K Keep open: " + mode + " | " + name + "  " + status
 
 	width := max(0, e.cols-1)
 	elapsed := time.Duration(0)
 	if !e.openedAt.IsZero() {
 		elapsed = now.Sub(e.openedAt)
 	}
-	timer := clipPlain("Tempo "+formatElapsed(elapsed), width)
+	timer := clipPlain("Time "+formatElapsed(elapsed), width)
 	remaining := width - visualWidth([]rune(timer))
 	left := clipPlain(status, remaining)
 	return left + strings.Repeat(" ", max(0, remaining-visualWidth([]rune(left)))) + timer

@@ -126,8 +126,9 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+S` | Save/confirm and exit. In untitled mode, write Markdown to stdout. |
+| `Ctrl+S` | Save/confirm and exit by default; stay open when Keep open is ON. In untitled mode, write Markdown to stdout only on exit. |
 | `Ctrl+Shift+S` | Save a file without closing the editor. Untitled buffers remain open and unchanged. |
+| `Ctrl+K` | Toggle Keep open (OFF by default, current session only). State and shortcut remain visible in the status bar. |
 | `Ctrl+X` / `Ctrl+C` | Ask before discarding changes; confirmed cancellation exits with code 130. |
 | `Ctrl+Space` | Open or refresh completion. |
 | `Ctrl+G` | Open Go to Line; enter `line` or `line:column`, then press Enter. |
@@ -145,6 +146,8 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 | `Page Up` / `Page Down` | Move by one viewport. |
 
 Completion also opens after `@`, `[`, or `/` in a valid context.
+
+With Keep open ON, `Ctrl+S` saves files without exiting, even if the terminal sends the same key code for `Ctrl+Shift+S`. Untitled buffers stay in memory without writing to disk or stdout; turn Keep open OFF with `Ctrl+K`, then press `Ctrl+S` to confirm and exit.
 
 ## Prompt Lang support
 
