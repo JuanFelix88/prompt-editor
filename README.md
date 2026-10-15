@@ -112,7 +112,7 @@ prompt-cli help
 | Option or command | Description |
 | --- | --- |
 | `edit` | Optional explicit name for the default editor mode. |
-| `--workspace DIR` | Root for `@` references; defaults to the current directory. |
+| `--workspace DIR` | Base for `@` references only in untitled mode; defaults to the current directory. Files always use their own directory. |
 | `--line N`, `--column N` | Initial one-based caret location; both default to 1. |
 | `--goto` | Parse `FILE:LINE[:COLUMN]`, including a Windows drive path. |
 | `--wait` | Accepted for editor-command compatibility; the process always waits. |
@@ -169,7 +169,7 @@ Use [Review > Style]
 - Check error handling
 ```
 
-Workspace references resolve from `--workspace`; heading references target ATX headings in the current document. Read [Prompt Lang](docs/language.md) for activation rules, syntax, matching behavior, and limits.
+File references resolve from the directory of the document being edited, including `../` paths outside the workspace. Untitled buffers use `--workspace` or the current directory. Heading references target ATX headings in the current document. Read [Prompt Lang](docs/language.md) for activation rules, syntax, matching behavior, and limits.
 
 ## LSP
 

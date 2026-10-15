@@ -6,14 +6,14 @@ Os contratos normativos completos estão em [`docs/reference/prompt-lang-concept
 
 Recursos contextuais são ativados em qualquer arquivo `*.md` ou `*.prompt`, sem distinção pelo nome.
 
-## Referências de workspace
+## Referências de arquivos e pastas
 
 ```md
 Read @src/main.go
 Use @docs/
 ```
 
-Forma efetiva: `(^|non-word)@[A-Za-z0-9._~+/-]+`. O alvo é relativo à raiz do workspace. Caminhos que escapem da raiz são rejeitados; arquivos e pastas são válidos. Completion é case-insensitive, enquanto existência segue o filesystem.
+Forma efetiva: `(^|non-word)@[A-Za-z0-9._~+/-]+`. O alvo é relativo à pasta do arquivo em edição, não ao workspace nem à pasta de execução. `@../guia.md` aponta para a pasta superior e pode sair do workspace; arquivos e pastas são válidos. Sem arquivo associado, a base é `--workspace` ou o diretório atual. Completion é case-insensitive, enquanto existência segue o filesystem.
 
 ## Referências de headings
 
@@ -31,7 +31,7 @@ Linhas `- item` e `* item` recebem tokens semânticos de prompt item. Na TUI, `-
 
 ## IntelliSense
 
-- `@prefix`: arquivos e pastas do workspace, pastas com `/` final.
+- `@prefix`: arquivos e pastas relativos ao documento, pastas com `/` final. Prefixos com segmentos `./` ou `../` buscam na pasta indicada e preservam o caminho relativo na inserção.
 - `[prefix`: caminhos de headings do documento atual; adiciona `]` quando necessário.
 - Contexto de heading tem precedência sobre arquivo.
 - Resultados são ranqueados por prefixo, basename/leaf e substring, com ordem determinística.

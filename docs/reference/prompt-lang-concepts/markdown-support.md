@@ -36,11 +36,11 @@ Prompt heading navigation uses a separate line scanner rather than the syntax tr
 
 ## Prompt-context notation
 
-### Workspace file and folder references
+### File and folder references
 
-A token such as `@src/lib.rs` or `@docs/` is a workspace-root-relative reference. The implementation accepts one or more ASCII letters, digits, `.`, `_`, `~`, `+`, `/`, or `-` after `@`. The `@` must be at the beginning of a line or preceded by a non-word character, which avoids treating the domain portion of a typical email address as a reference.
+A token such as `@src/lib.rs` or `@docs/` is relative to the directory containing the document being edited. The implementation accepts one or more ASCII letters, digits, `.`, `_`, `~`, `+`, `/`, or `-` after `@`. The `@` must be at the beginning of a line or preceded by a non-word character, which avoids treating the domain portion of a typical email address as a reference.
 
-A valid reference can point to either a file or directory. The server can complete it, report whether it exists on hover, and navigate to an existing target. Missing targets receive a distinct semantic style. Resolution is against the workspace root, **not** against the directory containing the prompt document. Leading `@` and leading slashes are normalized away. Lexical paths that escape the workspace are rejected, although the implementation does not canonicalize symlinks before checking the boundary.
+A valid reference can point to either a file or directory. The server can complete it, report whether it exists on hover, and navigate to an existing target. Missing targets receive a distinct semantic style. Resolution is against the document's directory, not the workspace root. Leading `@` and leading slashes are normalized away. `../` can reach parent directories, including outside the workspace. Untitled editor buffers use `--workspace` or the process working directory.
 
 These references are navigational context annotations only. The implementation does not read referenced file contents into a prompt, recursively expand references, enforce file types, or submit context to a model.
 
@@ -116,7 +116,7 @@ To reproduce this support in another editor or language host without copying pla
 1. **Pin the same grammar revision and build options.** Register the block grammar and explicitly decide whether to add the separate inline grammar. Do not infer active inline support merely from its presence in the source tree.
 2. **Port the query intent as separate concerns.** Preserve structural Markdown captures, ATX-only outline behavior, language-selected fence embedding, HTML embedding, and YAML/TOML metadata embedding. Validate every queried node against the pinned grammar's node types.
 3. **Define prompt-document detection once.** For compatibility with this repository, enable prompt services for the case-insensitive `.md` and `.prompt` suffixes.
-4. **Keep context resolution workspace-relative.** Normalize separators, reject traversal, decide how symlinks should be handled, exclude generated directories, and bound indexing/completion work. Preserve directory references if compatibility is desired.
+4. **Keep context resolution document-relative.** Derive the base from each document URI, normalize separators, allow parent traversal, exclude generated directories, and bound indexing/completion work. Keep caches separate by directory or resolved absolute path. Preserve directory references if compatibility is desired.
 5. **Replicate reference syntax precisely before extending it.** File tokens use the ASCII path alphabet above. Heading paths are current-document, ATX-only, exact/case-sensitive, and separated by normalized `>` components.
 6. **Choose an explicit syntax-boundary policy.** Exact compatibility requires prompt references to remain active in code fences and other literal regions while heading definitions are fence-aware. A more predictable implementation should instead derive all prompt features from parsed ranges and consistently suppress them in fenced/indented code, inline code, HTML, and metadata; that would be an intentional behavior change.
 7. **Test collisions with Markdown.** At minimum cover images, inline/reference/shortcut links, task boxes, link definitions, bracketed prose, email addresses, escaped punctuation, duplicate headings, skipped heading levels, unclosed/mixed fences, metadata, Unicode surrounding text, excluded directories, traversal, and index truncation.

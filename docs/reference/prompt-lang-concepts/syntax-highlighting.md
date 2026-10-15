@@ -83,9 +83,9 @@ Recognition details:
 - A bare `@` is not highlighted.
 - Both files and directories count as existing targets.
 
-The captured path is normalized by removing the `@`, converting backslashes if supplied by another entry path, and removing leading slashes. It is then resolved relative to the workspace root. In particular, `@/docs/a.md` is treated as the root-relative `@docs/a.md`, not as an operating-system absolute path. Resolution rejects NULs, any absolute form that remains after normalization, and any normalized path that escapes the root. Thus dot segments may appear, but `..` cannot be used to reach outside the workspace. Whether case differences resolve successfully follows the filesystem.
+The captured path is normalized by removing the `@`, converting backslashes if supplied by another entry path, and removing leading slashes. It is then resolved relative to the directory of the document being edited. In particular, `@/docs/a.md` is treated as `@docs/a.md` relative to that document, not as an operating-system absolute path. Resolution rejects NULs and absolute or drive-qualified forms remaining after normalization. Dot segments are allowed: `..` can reach outside the document directory and workspace. Whether case differences resolve successfully follows the filesystem.
 
-Existing references use a link/URI-like blue role (the supplied fallback color is `#4ea1ff`). Missing references use an error role with a red fallback (`#ff5f5f`) and an underline. Existence is live filesystem state rather than a grammar property, so a portable implementation needs a workspace-aware resolver and a refresh strategy when files are created, removed, or renamed.
+Existing references use a link/URI-like blue role (the supplied fallback color is `#4ea1ff`). Missing references use an error role with a red fallback (`#ff5f5f`) and an underline. Existence is live filesystem state rather than a grammar property, so a portable implementation needs a document-relative resolver and a refresh strategy when files are created, removed, or renamed.
 
 ### Heading references
 

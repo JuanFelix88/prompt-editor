@@ -11,7 +11,7 @@ prompt-cli --goto prompts/review.prompt.md:12:4
 prompt-cli --wait prompt.md
 ```
 
-- `--workspace`: raiz usada por referências `@`; o padrão é o diretório atual.
+- `--workspace`: base de referências `@` somente no modo sem arquivo; o padrão é o diretório atual. Com arquivo associado, a base é sempre a pasta desse arquivo, mesmo antes do primeiro save.
 - `--line` e `--column`: posição inicial, baseada em 1.
 - `--goto`: interpreta `FILE:LINE[:COLUMN]`, inclusive depois de um drive Windows.
 - `--wait`: aceito por compatibilidade; o processo sempre espera o editor fechar.

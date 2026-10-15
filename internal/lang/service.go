@@ -16,7 +16,8 @@ type cachedStatus struct {
 type Service struct {
 	Root      string
 	Documents *Documents
-	Index     *WorkspaceIndex
+	indexMu   sync.Mutex
+	indexes   map[string]*WorkspaceIndex
 	statusMu  sync.Mutex
 	statuses  map[string]cachedStatus
 }
@@ -26,12 +27,35 @@ func NewService(root string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{Root: filepath.Clean(abs), Documents: NewDocuments(), Index: NewWorkspaceIndex(filepath.Clean(abs)), statuses: make(map[string]cachedStatus)}, nil
+	return &Service{Root: filepath.Clean(abs), Documents: NewDocuments(), indexes: make(map[string]*WorkspaceIndex), statuses: make(map[string]cachedStatus)}, nil
 }
 
 func (s *Service) promptURI(uri string) bool {
 	path, err := URIToPath(uri)
 	return err == nil && isPromptPath(path)
+}
+
+func (s *Service) baseDir(uri string) string {
+	path, err := URIToPath(uri)
+	if err != nil {
+		return s.Root
+	}
+	return filepath.Dir(path)
+}
+
+func (s *Service) indexFor(dir string) *WorkspaceIndex {
+	s.indexMu.Lock()
+	defer s.indexMu.Unlock()
+	if index := s.indexes[dir]; index != nil {
+		return index
+	}
+	// Bound retained indexes for long-lived, multi-document LSP sessions.
+	if len(s.indexes) >= 64 {
+		s.indexes = make(map[string]*WorkspaceIndex)
+	}
+	index := NewWorkspaceIndex(dir)
+	s.indexes[dir] = index
+	return index
 }
 
 func (s *Service) Complete(uri string, pos Position) CompletionList {
@@ -60,7 +84,7 @@ func (s *Service) Complete(uri string, pos Position) CompletionList {
 			return CompletionList{Items: []Completion{}}
 		}
 	}
-	return s.fileCompletions(prefix, pos, UTF16Len(before[:at+1]))
+	return s.fileCompletions(uri, prefix, pos, UTF16Len(before[:at+1]))
 }
 
 type scoredFile struct {
@@ -68,8 +92,21 @@ type scoredFile struct {
 	score int
 }
 
-func (s *Service) fileCompletions(prefix string, pos Position, start int) CompletionList {
-	entries, truncated := s.Index.Get()
+func (s *Service) fileCompletions(uri, prefix string, pos Position, start int) CompletionList {
+	prefix = normalizeReference(prefix)
+	dirPrefix := ""
+	// Keep ordinary fuzzy path matching; explicitly scoped dot paths use
+	// the requested directory, including parents outside the workspace.
+	if strings.HasPrefix(prefix, "./") || strings.HasPrefix(prefix, "../") ||
+		strings.Contains(prefix, "/./") || strings.Contains(prefix, "/../") {
+		slash := strings.LastIndex(prefix, "/")
+		dirPrefix, prefix = prefix[:slash+1], prefix[slash+1:]
+	}
+	dir, ok := referencePath(s.baseDir(uri), dirPrefix)
+	if !ok {
+		return CompletionList{Items: []Completion{}}
+	}
+	entries, truncated := s.indexFor(dir).Get()
 	lower := strings.ToLower(prefix)
 	matches := make([]scoredFile, 0)
 	for _, e := range entries {
@@ -111,6 +148,7 @@ func (s *Service) fileCompletions(prefix string, pos Position, start int) Comple
 	}
 	items := make([]Completion, 0, len(matches))
 	for _, m := range matches {
+		m.e.Insert = dirPrefix + m.e.Insert
 		parts := strings.Split(strings.TrimSuffix(m.e.Insert, "/"), "/")
 		label := m.e.Insert
 		if len(parts) > 2 {

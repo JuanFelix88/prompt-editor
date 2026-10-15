@@ -2,7 +2,6 @@ package lang
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -58,11 +57,4 @@ func runeToUTF16(rs []rune, index int) int {
 func isPromptPath(path string) bool {
 	name := strings.ToLower(filepath.Base(path))
 	return strings.HasSuffix(name, ".md") || strings.HasSuffix(name, ".prompt")
-}
-
-func pathEqualOrInside(root, target string) bool {
-	if runtime.GOOS == "windows" {
-		root, target = strings.ToLower(root), strings.ToLower(target)
-	}
-	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
 }

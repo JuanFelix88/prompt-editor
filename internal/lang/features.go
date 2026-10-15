@@ -34,9 +34,9 @@ func (s *Service) Hover(uri string, pos Position) *Hover {
 	}
 	rng := Range{Start: Position{pos.Line, r.StartUTF16}, End: Position{pos.Line, r.EndUTF16}}
 	if r.File {
-		path, info, ok := Resolve(s.Root, r.Value)
+		path, info, ok := Resolve(s.baseDir(uri), r.Value)
 		if !ok {
-			return &Hover{Contents: MarkupContent{Kind: "markdown", Value: fmt.Sprintf("`@%s`\n\nMissing file or folder in workspace.", r.Value)}, Range: rng}
+			return &Hover{Contents: MarkupContent{Kind: "markdown", Value: fmt.Sprintf("`@%s`\n\nMissing file or folder relative to this document.", r.Value)}, Range: rng}
 		}
 		kind := "file"
 		if info.IsDir() {
@@ -75,7 +75,7 @@ func (s *Service) Definition(uri string, pos Position) *Location {
 		return nil
 	}
 	if r.File {
-		path, _, ok := Resolve(s.Root, r.Value)
+		path, _, ok := Resolve(s.baseDir(uri), r.Value)
 		if !ok {
 			return nil
 		}
@@ -118,13 +118,16 @@ func addSplit(tokens *[]SemanticToken, line, start, end int, kind TokenKind, ref
 	}
 }
 
-func (s *Service) referenceExists(value string, cached bool) bool {
+func (s *Service) referenceExists(base, value string, cached bool) bool {
 	if !cached {
-		_, _, ok := Resolve(s.Root, value)
+		_, _, ok := Resolve(base, value)
 		return ok
 	}
+	key, ok := referencePath(base, value)
+	if !ok {
+		return false
+	}
 	now := time.Now()
-	key := normalizeReference(value)
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 	if len(s.statuses) > 4096 {
@@ -140,7 +143,7 @@ func (s *Service) referenceExists(value string, cached bool) bool {
 	if status, ok := s.statuses[key]; ok && now.Sub(status.checked) < IndexTTL {
 		return status.exists
 	}
-	_, _, ok := Resolve(s.Root, value)
+	_, _, ok = Resolve(base, value)
 	s.statuses[key] = cachedStatus{exists: ok, checked: now}
 	return ok
 }
@@ -151,6 +154,7 @@ func (s *Service) semantic(uri string, cachedStatus bool) []SemanticToken {
 	text := s.Documents.Text(uri)
 	lines := splitLines(text)
 	prompt := s.promptURI(uri)
+	base := s.baseDir(uri)
 	headings := ScanHeadings(text)
 	headingByLine := make(map[int]Heading, len(headings))
 	headingPaths := make(map[string]bool, len(headings))
@@ -185,7 +189,7 @@ func (s *Service) semantic(uri string, cachedStatus bool) []SemanticToken {
 			for _, r := range refs {
 				kind := TokenHeadingRefMissing
 				if r.File {
-					ok := s.referenceExists(r.Value, cachedStatus)
+					ok := s.referenceExists(base, r.Value, cachedStatus)
 					kind = TokenFileMissing
 					if ok {
 						kind = TokenFile

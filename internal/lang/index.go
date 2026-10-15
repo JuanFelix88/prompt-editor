@@ -95,13 +95,17 @@ func normalizeReference(value string) string {
 	return value
 }
 
-func Resolve(root, value string) (string, os.FileInfo, bool) {
-	value = normalizeReference(value)
-	if strings.ContainsRune(value, 0) || filepath.IsAbs(filepath.FromSlash(value)) {
-		return "", nil, false
+func referencePath(base, value string) (string, bool) {
+	value = filepath.FromSlash(normalizeReference(value))
+	if strings.ContainsRune(value, 0) || filepath.IsAbs(value) || filepath.VolumeName(value) != "" {
+		return "", false
 	}
-	target := filepath.Clean(filepath.Join(root, filepath.FromSlash(value)))
-	if !pathEqualOrInside(root, target) {
+	return filepath.Clean(filepath.Join(base, value)), true
+}
+
+func Resolve(base, value string) (string, os.FileInfo, bool) {
+	target, ok := referencePath(base, value)
+	if !ok {
 		return "", nil, false
 	}
 	info, err := os.Stat(target)

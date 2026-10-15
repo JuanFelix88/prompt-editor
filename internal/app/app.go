@@ -33,7 +33,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	fs := flag.NewFlagSet("prompt-cli", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	workspace := fs.String("workspace", "", "workspace root")
+	workspace := fs.String("workspace", "", "base for @ references in untitled mode (files use their own directory)")
 	line := fs.Int("line", 1, "initial one-based line")
 	column := fs.Int("column", 1, "initial one-based column")
 	gotoMode := fs.Bool("goto", false, "parse FILE:LINE[:COLUMN]")
@@ -112,7 +112,7 @@ func writeOutput(w io.Writer, text string) error {
 func runLSP(args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("prompt-cli lsp", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	workspace := fs.String("workspace", "", "authoritative workspace root")
+	workspace := fs.String("workspace", "", "initial workspace root (@ references use each document's directory)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

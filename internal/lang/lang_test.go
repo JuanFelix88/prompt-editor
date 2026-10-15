@@ -60,15 +60,12 @@ func TestCompletionAndFreshResolution(t *testing.T) {
 		t.Fatalf("hover=%#v", h)
 	}
 }
-func TestTraversalAndMarkdownActivation(t *testing.T) {
+func TestMarkdownActivation(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "guide.md"), []byte("# Guide"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	s, _ := NewService(root)
-	if _, _, ok := Resolve(root, "../outside"); ok {
-		t.Fatal("workspace traversal resolved")
-	}
 	uri := PathToURI(filepath.Join(root, "notes.md"))
 	s.Documents.Open(uri, "@gu\n# H")
 	if got := s.Complete(uri, Position{Line: 0, Character: 3}); len(got.Items) == 0 || got.Items[0].TextEdit.NewText != "guide.md" {

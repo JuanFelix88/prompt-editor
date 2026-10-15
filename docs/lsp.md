@@ -41,6 +41,7 @@ Mensagens usam `Content-Length` com corpos JSON-RPC UTF-8. O leitor suporta fram
 
 - argumento `--workspace` prevalece sobre `rootUri`/workspace folders;
 - sem argumento, `rootUri` ou o primeiro workspace folder substitui o diretório inicial;
+- a resolução e as sugestões de `@` usam sempre a pasta do documento solicitado, independentemente de `--workspace`, `rootUri` ou workspace folders; `../` pode sair do workspace;
 - snapshots de `didOpen`/`didChange` prevalecem sobre o arquivo;
 - `didChange` usa o primeiro change como novo texto completo;
 - `didClose` remove o snapshot;
