@@ -1,11 +1,13 @@
 package editor
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/rivo/uniseg"
 
@@ -22,11 +24,21 @@ type Buffer struct {
 
 func Load(path string) (*Buffer, error) {
 	b := &Buffer{Path: path, Lines: [][]rune{{}}}
+	info, err := os.Stat(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err == nil && !info.Mode().IsRegular() {
+		return nil, errors.New("only regular text files can be edited")
+	}
 	data, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	if err == nil {
+		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+			return nil, errors.New("file is not UTF-8 text")
+		}
 		text := strings.ReplaceAll(string(data), "\r\n", "\n")
 		parts := strings.Split(text, "\n")
 		b.Lines = make([][]rune, len(parts))

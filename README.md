@@ -87,7 +87,7 @@ prompt="$(prompt-cli)"
 
 ## AI harness integration
 
-Put `prompt-cli` on `PATH` before launching a harness. It requires an interactive terminal and waits until the editor closes; `Ctrl+S` saves and exits with status 0, while confirmed cancellation exits with status 130. File-backed editing accepts only `.md` and `.prompt` filenames.
+Put `prompt-cli` on `PATH` before launching a harness. It requires an interactive terminal and waits until the editor closes; `Ctrl+S` saves and exits with status 0, while confirmed cancellation exits with status 130. Command-line file arguments accept `.md` and `.prompt`; reference navigation also opens other UTF-8 text files.
 
 | Harness | Supported integration |
 | --- | --- |
@@ -132,6 +132,7 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 | `Ctrl+X` / `Ctrl+C` | Ask before discarding changes; confirmed cancellation exits with code 130. |
 | `Ctrl+Space` | Open or refresh completion. |
 | `Ctrl+G` | Open Go to Line; enter `line` or `line:column`, then press Enter. |
+| `F12` / `Ctrl+O` | Open the `@file` reference at the caret in a nested editor; closing it returns to the previous editor. |
 | `Tab` / `Enter` | Accept completion, or insert a tab/newline when no popup is open. |
 | `Esc` | Close completion, Go to Line, or cancel a discard prompt. |
 | Arrow keys | Move the caret or completion selection. |
@@ -148,6 +149,8 @@ Supply at most one file. A nonexistent file stays in memory until its first save
 Completion also opens after `@`, `[`, or `/` in a valid context.
 
 With Keep open ON, `Ctrl+S` saves files without exiting, even if the terminal sends the same key code for `Ctrl+Shift+S`. Untitled buffers stay in memory without writing to disk or stdout; turn Keep open OFF with `Ctrl+K`, then press `Ctrl+S` to confirm and exit.
+
+Reference navigation accepts the caret anywhere in `@file`, immediately before `@`, or immediately after the path, including while completion is open. It works in any buffer and uses the current document's directory (the workspace for untitled buffers). Missing files stay in memory until saved; parent directories must already exist at save time. Nested editors preserve the previous buffer, caret, scrolling, and Keep open setting. Save/close or confirmed cancellation returns to the previous editor without confirming an untitled parent. Directories, binary/non-UTF-8 files, and files already open in the session are rejected.
 
 ## Prompt Lang support
 
@@ -192,7 +195,7 @@ The server supports full-document synchronization, completion, hover, definition
 
 ## Limitations
 
-- No undo/redo, mouse support, multiple buffers, or soft wrap.
+- No undo/redo, mouse support, arbitrary buffer switching, or soft wrap; references open nested editor instances.
 - No filesystem watcher; the workspace index uses a short TTL.
 - Workspace scanning is limited to 50,000 metadata entries and completion to 500 candidates.
 - Fenced code blocks without an available language highlighter use generic code styling.

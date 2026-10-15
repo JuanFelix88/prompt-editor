@@ -18,7 +18,7 @@ prompt-cli --wait prompt.md
 - Arquivo omitido: abre `[No Name]`; nada é gravado. `Ctrl+S` fecha e escreve somente o Markdown no stdout; a TUI usa stderr para não contaminar pipelines.
 - Arquivo inexistente informado: cria um buffer e só materializa no primeiro save.
 
-O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang completa é ativada apenas nos nomes definidos em [language.md](language.md).
+A abertura pela linha de comando aceita `.md` e `.prompt`. Pela navegação de referências, qualquer arquivo de texto UTF-8 pode ser editado; outras extensões usam texto simples, sem highlighting Markdown. A semântica Prompt Lang completa continua restrita aos nomes definidos em [language.md](language.md).
 
 ## Teclas
 
@@ -30,6 +30,7 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 | `Ctrl+X` / `Ctrl+C` | abre confirmação; `y` descarta e fecha com código 130, `n`/`Esc`/`Enter` continua |
 | `Ctrl+Space` | abre/atualiza completion |
 | `Ctrl+G` | abre “Ir para linha”; informe `linha` ou `linha:coluna` e pressione Enter |
+| `F12` / `Ctrl+O` | abre a referência `@arquivo` no cursor em uma nova instância interna; ao fechar, retorna ao editor anterior |
 | `Tab` ou `Enter` | aceita completion; sem popup, insere tab/newline |
 | `Esc` | fecha completion ou “Ir para linha” |
 | `↑` / `↓` | move caret ou seleção do popup |
@@ -47,6 +48,14 @@ O editor restringe escrita a `.md` e `.prompt`. A semântica Prompt Lang complet
 Completion também abre ao digitar `@`, `[`, ou `/` em um contexto válido. O popup nunca substitui o cursor real: o cursor permanece no caret do documento.
 
 Com Keep open ON, `Ctrl+S` grava arquivos sem fechar, inclusive quando o terminal não distingue `Ctrl+Shift+S`. Sem arquivo, o conteúdo permanece na memória, sem escrita em disco/stdout: desative com `Ctrl+K` e confirme com `Ctrl+S`.
+
+## Editar uma referência
+
+Posicione o cursor dentro de `@arquivo`, imediatamente antes do `@` ou imediatamente depois do caminho e pressione `F12` ou `Ctrl+O`. Funciona também com completion aberto e em arquivos sem semântica Prompt Lang. O caminho segue a sintaxe `@` existente, relativo à pasta do arquivo atual; buffers sem arquivo usam o workspace.
+
+O editor anterior permanece em memória, com texto não salvo, cursor, scroll e Keep open preservados. É possível navegar em referências dentro da nova instância. `Ctrl+S` salva e retorna (com Keep open OFF); `Ctrl+X`/`Ctrl+C`, seguido de `y`, descarta e retorna. Nenhuma dessas ações confirma ou cancela o editor anterior, nem envia seu conteúdo ao stdout.
+
+Arquivos inexistentes só são criados ao salvar. As pastas do caminho precisam existir no momento do save. Diretórios, arquivos binários/não UTF-8 e arquivos já abertos na sessão são recusados com aviso no rodapé, sem alterar o buffer atual.
 
 ## Saída e falhas
 

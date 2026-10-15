@@ -25,6 +25,7 @@ A TUI chama `internal/lang` diretamente; não inicia LSP, subprocesso ou runtime
 - Completion retorna no máximo 500 itens.
 - Hover, definition e semantic tokens LSP validam referências com `stat` atual, sem confiar no índice possivelmente stale.
 - Save usa arquivo temporário no mesmo diretório, `Sync` e `Rename`.
+- `F12`/`Ctrl+O` empilha instâncias internas do editor, mantendo um único loop de terminal e leitor de stdin. Save/close e cancelamento da instância filha restauram a anterior; nenhum subprocesso é iniciado. Timers de análise pendentes são descartados ao trocar a instância ativa.
 
 ## Buffer e coordenadas
 

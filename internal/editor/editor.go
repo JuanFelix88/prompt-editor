@@ -55,6 +55,7 @@ type Editor struct {
 	openedAt                           time.Time
 	anonymous, confirmCancel, gotoOpen bool
 	keepOpen                           bool
+	plainText                          bool
 	output                             *os.File
 }
 
@@ -83,7 +84,9 @@ func newEditor(b *Buffer, uri, workspace string, anonymous bool) (*Editor, error
 		return nil, err
 	}
 	s.Documents.Open(uri, b.Text())
-	e := &Editor{buffer: b, service: s, uri: uri, anonymous: anonymous, status: "Ctrl+S save/confirm • Ctrl+Shift+S save • Ctrl+X cancel"}
+	e := &Editor{buffer: b, service: s, uri: uri, anonymous: anonymous, status: "Ctrl+S save/confirm • Ctrl+Shift+S save • Ctrl+O/F12 open • Ctrl+X cancel"}
+	ext := strings.ToLower(filepath.Ext(b.Path))
+	e.plainText = !anonymous && ext != ".md" && ext != ".prompt"
 	e.tokens = s.Semantic(uri)
 	return e, nil
 }
@@ -123,6 +126,12 @@ func (e *Editor) Run() (string, error) {
 	defer clock.Stop()
 	var timer *time.Timer
 	var analysis <-chan time.Time
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
+	session := &editorSession{current: e}
 	schedule := func() {
 		if timer != nil {
 			if !timer.Stop() {
@@ -187,14 +196,24 @@ func (e *Editor) Run() (string, error) {
 				}
 				continue
 			}
-			changed, complete, exit := e.handle(key)
+			changed, complete, exit := session.handle(key)
 			if exit == 1 {
-				if confirmed, done := e.confirm(); done {
-					return confirmed, nil
-				}
+				return session.result, nil
 			}
 			if exit == -1 {
 				return "", ErrCancelled
+			}
+			if e != session.current {
+				// Analysis timers belong to the buffer that scheduled them.
+				if timer != nil {
+					timer.Stop()
+				}
+				analysis = nil
+				e = session.current
+				e.resize()
+				if _, err = io.WriteString(e.output, e.terminalTitle()); err != nil {
+					return "", err
+				}
 			}
 			if changed {
 				schedule()
@@ -699,6 +718,9 @@ func (e *Editor) structuralStyles(line int, rs []rune, insideFence, delimiter, m
 	return styles
 }
 func (e *Editor) stylesFor(line int, rs []rune, insideFence, delimiter, metadata bool) []string {
+	if e.plainText {
+		return make([]string, len(rs))
+	}
 	styles := e.structuralStyles(line, rs, insideFence, delimiter, metadata)
 	for _, t := range e.tokens {
 		if t.Line != line {

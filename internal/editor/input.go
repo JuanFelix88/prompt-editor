@@ -44,6 +44,7 @@ const (
 	KeyDocumentEnd
 	KeyGoTo
 	KeyToggleKeepOpen
+	KeyOpenReference
 )
 
 type Key struct {
@@ -155,6 +156,10 @@ func (d *inputDecoder) decode() (keys []Key) {
 			keys = append(keys, Key{Kind: KeyToggleKeepOpen})
 			d.buf = d.buf[1:]
 			continue
+		case 15:
+			keys = append(keys, Key{Kind: KeyOpenReference})
+			d.buf = d.buf[1:]
+			continue
 		case 19:
 			keys = append(keys, Key{Kind: KeySave})
 			d.buf = d.buf[1:]
@@ -264,6 +269,8 @@ func escapeKey(seq string) (Key, bool) {
 		return Key{Kind: KeyGoTo}, true
 	case "107;5u", "27;5;107~":
 		return Key{Kind: KeyToggleKeepOpen}, true
+	case "24~", "24;1~", "57375u", "57375;1u", "111;5u", "27;5;111~":
+		return Key{Kind: KeyOpenReference}, true
 	default:
 		return Key{}, false
 	}

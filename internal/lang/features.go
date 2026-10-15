@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -61,6 +62,20 @@ func (s *Service) Hover(uri string, pos Position) *Hover {
 	return &Hover{Contents: MarkupContent{Kind: "markdown", Value: value}, Range: rng}
 }
 
+// FileReferenceTarget resolves an explicit editor navigation request without
+// requiring the target to exist. Unlike LSP definitions, this is available in
+// any document; automatic Prompt Lang features retain their activation rules.
+func (s *Service) FileReferenceTarget(uri string, pos Position) (string, bool) {
+	lines := splitLines(s.Documents.Text(uri))
+	if pos.Line < 0 || pos.Line >= len(lines) {
+		return "", false
+	}
+	r := referenceAt(lines[pos.Line], pos.Character, true)
+	if r == nil || !r.File || strings.HasSuffix(r.Value, "/") {
+		return "", false
+	}
+	return referencePath(s.baseDir(uri), r.Value)
+}
 func (s *Service) Definition(uri string, pos Position) *Location {
 	if !s.promptURI(uri) {
 		return nil
