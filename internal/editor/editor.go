@@ -51,6 +51,7 @@ type Editor struct {
 	structureVersion                   uint64
 	insideFence, delimiter, metadata   []bool
 	status                             string
+	externalStatus                     string
 	gotoInput, gotoError               string
 	openedAt                           time.Time
 	anonymous, confirmCancel, gotoOpen bool
@@ -124,6 +125,15 @@ func (e *Editor) Run() (string, error) {
 	keys, inputErr := startInput(os.Stdin)
 	clock := time.NewTicker(time.Second)
 	defer clock.Stop()
+	watch, err := newFileWatch(e)
+	if err != nil {
+		return "", fmt.Errorf("watch files: %w", err)
+	}
+	defer watch.Close()
+	reloadTimer := time.NewTimer(time.Hour)
+	reloadTimer.Stop()
+	defer reloadTimer.Stop()
+	var reload <-chan time.Time
 	var timer *time.Timer
 	var analysis <-chan time.Time
 	defer func() {
@@ -145,6 +155,7 @@ func (e *Editor) Run() (string, error) {
 		analysis = timer.C
 	}
 
+	e.checkExternal()
 	e.resize()
 	if err = e.render(); err != nil {
 		return "", err
@@ -178,6 +189,35 @@ func (e *Editor) Run() (string, error) {
 			if err = e.renderElapsed(); err != nil {
 				return "", err
 			}
+		case event, ok := <-watch.Events:
+			if !ok {
+				return "", errors.New("file watcher closed")
+			}
+			if watch.relevant(event) {
+				if watchErr := watch.follow(e); watchErr != nil {
+					e.status = "watch failed: " + watchErr.Error()
+				}
+				// Coalesce save bursts so temporary/truncated contents are not
+				// rendered between a writer's remove, create and write events.
+				reloadTimer.Reset(75 * time.Millisecond)
+				reload = reloadTimer.C
+			}
+		case watchErr, ok := <-watch.Errors:
+			if !ok {
+				return "", errors.New("file watcher closed")
+			}
+			e.checkExternal()
+			e.status = "watch failed: " + watchErr.Error()
+			if err = e.render(); err != nil {
+				return "", err
+			}
+		case <-reload:
+			reload = nil
+			if e.checkExternal() {
+				if err = e.render(); err != nil {
+					return "", err
+				}
+			}
 		case <-analysis:
 			e.service.Documents.Change(e.uri, e.buffer.Text())
 			e.tokens = e.service.SemanticCached(e.uri)
@@ -190,6 +230,7 @@ func (e *Editor) Run() (string, error) {
 				if err = suspendTerminal(fd, old, e.output); err != nil {
 					return "", err
 				}
+				e.checkExternal()
 				e.resize()
 				if err = e.render(); err != nil {
 					return "", err
@@ -210,6 +251,12 @@ func (e *Editor) Run() (string, error) {
 				}
 				analysis = nil
 				e = session.current
+				reloadTimer.Stop()
+				reload = nil
+				if watchErr := watch.follow(e); watchErr != nil {
+					e.status = "watch failed: " + watchErr.Error()
+				}
+				e.checkExternal()
 				e.resize()
 				if _, err = io.WriteString(e.output, e.terminalTitle()); err != nil {
 					return "", err
@@ -238,6 +285,7 @@ func (e *Editor) confirm() (string, bool) {
 		e.status = "save failed: " + err.Error()
 		return "", false
 	}
+	e.externalStatus = ""
 	return "", true
 }
 func (e *Editor) saveWithoutExit() {
@@ -250,6 +298,7 @@ func (e *Editor) saveWithoutExit() {
 		return
 	}
 	e.status = "saved"
+	e.externalStatus = ""
 }
 
 func parseGotoInput(input string) (line, column int, ok bool) {
@@ -818,6 +867,9 @@ func formatElapsed(elapsed time.Duration) string {
 
 func (e *Editor) statusBar(now time.Time) string {
 	status := e.status
+	if e.externalStatus != "" {
+		status = e.externalStatus
+	}
 	if e.buffer.Dirty {
 		status = "● " + status
 	}

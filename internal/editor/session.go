@@ -82,6 +82,7 @@ func (s *editorSession) handle(k Key) (changed, complete bool, exit int) {
 		// Include edits made just before opening and refresh missing-file colors
 		// after the child creates a file, without waiting for the index TTL.
 		parent := s.current
+		parent.checkExternal()
 		parent.service.Documents.Change(parent.uri, parent.buffer.Text())
 		parent.tokens = parent.service.Semantic(parent.uri)
 		return false, false, 0

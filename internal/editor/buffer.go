@@ -15,11 +15,13 @@ import (
 )
 
 type Buffer struct {
-	Path     string
-	Lines    [][]rune
-	Row, Col int
-	Dirty    bool
-	Version  uint64
+	Path       string
+	Lines      [][]rune
+	Row, Col   int
+	Dirty      bool
+	Version    uint64
+	diskText   string
+	diskExists bool
 }
 
 func Load(path string) (*Buffer, error) {
@@ -45,6 +47,8 @@ func Load(path string) (*Buffer, error) {
 		for i, p := range parts {
 			b.Lines[i] = []rune(p)
 		}
+		b.diskText = text
+		b.diskExists = true
 	}
 	return b, nil
 }
@@ -400,7 +404,8 @@ func (b *Buffer) Save() error {
 	if info, e := os.Stat(b.Path); e == nil {
 		_ = tmp.Chmod(info.Mode())
 	}
-	if _, err = tmp.WriteString(b.Text()); err == nil {
+	text := b.Text()
+	if _, err = tmp.WriteString(text); err == nil {
 		err = tmp.Sync()
 	}
 	if closeErr := tmp.Close(); err == nil {
@@ -414,6 +419,8 @@ func (b *Buffer) Save() error {
 	}
 	ok = true
 	b.Dirty = false
+	b.diskText = text
+	b.diskExists = true
 	return nil
 }
 

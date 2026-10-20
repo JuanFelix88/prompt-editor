@@ -150,6 +150,8 @@ Completion also opens after `@`, `[`, or `/` in a valid context.
 
 With Keep open ON, `Ctrl+S` saves files without exiting, even if the terminal sends the same key code for `Ctrl+Shift+S`. Untitled buffers stay in memory without writing to disk or stdout; turn Keep open OFF with `Ctrl+K`, then press `Ctrl+S` to confirm and exit.
 
+Files changed externally reload automatically using native filesystem notifications, without polling. Unsaved local edits are preserved with a conflict warning; explicitly saving overwrites the disk file. Deleted or invalid files leave the buffer intact. Suspended reference buffers are checked when you return to them.
+
 Reference navigation accepts the caret anywhere in `@file`, immediately before `@`, or immediately after the path, including while completion is open. It works in any buffer and uses the current document's directory (the workspace for untitled buffers). Missing files stay in memory until saved; parent directories must already exist at save time. Nested editors preserve the previous buffer, caret, scrolling, and Keep open setting. Save/close or confirmed cancellation returns to the previous editor without confirming an untitled parent. Directories, binary/non-UTF-8 files, and files already open in the session are rejected.
 
 ## Prompt Lang support
