@@ -581,6 +581,10 @@ func tokenStyle(k lang.TokenKind) string {
 		return "\x1b[31m"
 	case lang.TokenPromptStarItem:
 		return "\x1b[34m"
+	case lang.TokenTaskDone:
+		return "\x1b[90m"
+	case lang.TokenTaskMarker:
+		return "\x1b[33m"
 	}
 	return "\x1b[0m"
 }
@@ -748,6 +752,12 @@ func (e *Editor) structuralStyles(line int, rs []rune, insideFence, delimiter, m
 			if trim+1 < len(rs) && (rs[trim+1] == ' ' || rs[trim+1] == '\t') {
 				fillStyle(styles, trim, trim+1, "\x1b[38;5;220m")
 			}
+		}
+		// Mirrors the semantic pass so task markers keep their color in
+		// documents without contextual tokens; the token layer wins when both
+		// cover the same span.
+		if t, ok := lang.ScanTaskMarkerRunes(rs); ok {
+			fillStyle(styles, t.StartRune, t.EndRune, tokenStyle(lang.TaskMarkerKind(t.Value)))
 		}
 		if rs[trim] >= '0' && rs[trim] <= '9' {
 			j := trim

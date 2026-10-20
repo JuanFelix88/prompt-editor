@@ -110,8 +110,62 @@ func isPathRune(r rune) bool {
 	return isASCIIWord(r) || r == '.' || r == '~' || r == '+' || r == '/' || r == '-'
 }
 
+// ScanTaskMarker reports the inner character of a task marker opening a line,
+// as in `- [x] `, `* [ ] `, or `+ [*] `. Recognition is deliberately
+// positional: a bracketed value elsewhere on the line is ordinary text, so
+// `see [x]` never produces a task marker.
+func ScanTaskMarker(line string) (TaskMarker, bool) { return scanTaskMarker([]rune(line)) }
+
+// ScanTaskMarkerRunes is ScanTaskMarker over an already-decoded line, so
+// render paths reuse the line buffer instead of re-allocating every frame.
+func ScanTaskMarkerRunes(rs []rune) (TaskMarker, bool) { return scanTaskMarker(rs) }
+
+func scanTaskMarker(rs []rune) (TaskMarker, bool) {
+	i := 0
+	for i < len(rs) && (rs[i] == ' ' || rs[i] == '\t') {
+		i++
+	}
+	if i+1 >= len(rs) || rs[i] != '-' && rs[i] != '*' && rs[i] != '+' {
+		return TaskMarker{}, false
+	}
+	if rs[i+1] != ' ' && rs[i+1] != '\t' {
+		return TaskMarker{}, false
+	}
+	j := i + 2
+	for j < len(rs) && (rs[j] == ' ' || rs[j] == '\t') {
+		j++
+	}
+	if j+2 >= len(rs) || rs[j] != '[' || rs[j+2] != ']' {
+		return TaskMarker{}, false
+	}
+	inner := rs[j+1]
+	if inner == ' ' || inner == '\t' || inner == '[' || inner == ']' {
+		return TaskMarker{}, false
+	}
+	if j+3 < len(rs) && rs[j+3] != ' ' && rs[j+3] != '\t' {
+		return TaskMarker{}, false
+	}
+	return TaskMarker{
+		StartRune: j + 1, EndRune: j + 2,
+		StartUTF16: runeToUTF16(rs, j+1), EndUTF16: runeToUTF16(rs, j+2),
+		Value: string(inner),
+	}, true
+}
+
+// TaskMarkerKind maps a marker value to its token, separating a completed
+// task from any other custom marker.
+func TaskMarkerKind(value string) TokenKind {
+	if strings.EqualFold(value, "x") {
+		return TokenTaskDone
+	}
+	return TokenTaskMarker
+}
 func ScanReferences(line string) []Reference {
 	rs := []rune(line)
+	taskAt := -1
+	if t, ok := ScanTaskMarker(line); ok {
+		taskAt = t.StartRune - 1
+	}
 	files := make([]Reference, 0)
 	for i := 0; i < len(rs); i++ {
 		if rs[i] != '@' || (i > 0 && isASCIIWord(rs[i-1])) {
@@ -129,7 +183,7 @@ func ScanReferences(line string) []Reference {
 	}
 	out := append([]Reference(nil), files...)
 	for i := 0; i < len(rs); i++ {
-		if rs[i] != '[' || (i > 0 && rs[i-1] == '!') {
+		if rs[i] != '[' || (i > 0 && rs[i-1] == '!') || i == taskAt {
 			continue
 		}
 		j := i + 1

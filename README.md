@@ -9,6 +9,7 @@ A small, fast terminal editor for Markdown prompts in AI coding harnesses.
 - **Simple by design:** one static-friendly binary, no runtime downloads, network access, subprocesses, or persistent cache.
 - **Made for terminals:** Unicode/grapheme-aware editing, vertical and horizontal scrolling, atomic saves, and a real VT caret.
 - **Prompt-aware:** Markdown highlighting plus completion for `@` workspace references and `[Heading]` references.
+- **Task markers:** the `x` in `- [x]` is colored by state, and a custom marker such as `- [*]` gets its own color; both follow the terminal theme rather than fixed colors.
 - **Harness-friendly:** blocks until editing ends, accepts `--wait` for editor-command compatibility, and supports untitled stdout output.
 - **Editor-ready:** the same binary exposes a stdio LSP for compatible clients.
 
@@ -201,6 +202,7 @@ The server supports full-document synchronization, completion, hover, definition
 - No filesystem watcher; the workspace index uses a short TTL.
 - Workspace scanning is limited to 50,000 metadata entries and completion to 500 candidates.
 - Fenced code blocks without an available language highlighter use generic code styling.
+- Task markers are recognized only after an unordered `-`, `*`, or `+` item marker, and not in ordered lists.
 - Atomic replacement follows the local filesystem behavior of `os.Rename`.
 - Liquid Cursor visual smoke testing requires pnex, although the editor works without it.
 

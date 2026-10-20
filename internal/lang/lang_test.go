@@ -128,6 +128,92 @@ func TestSemanticTokensDoNotOverlap(t *testing.T) {
 		t.Fatalf("encoded size=%d", len(data))
 	}
 }
+func TestTaskMarkerSemanticTokens(t *testing.T) {
+	root := t.TempDir()
+	s, _ := NewService(root)
+	uri := PathToURI(filepath.Join(root, "prompt.md"))
+	s.Documents.Open(uri, "- [x] done\n* [*] custom\n+ [X] upper\n- [ ] pending\nsee [x] inline")
+
+	// A marker covers its inner character only, never the brackets, and never
+	// a bracketed value away from the list marker.
+	want := []SemanticToken{
+		{Line: 0, Start: 3, Length: 1, Kind: TokenTaskDone},
+		{Line: 1, Start: 3, Length: 1, Kind: TokenTaskMarker},
+		{Line: 2, Start: 3, Length: 1, Kind: TokenTaskDone},
+	}
+	var got []SemanticToken
+	for _, tok := range s.Semantic(uri) {
+		if tok.Kind == TokenTaskDone || tok.Kind == TokenTaskMarker {
+			got = append(got, tok)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("markers=%#v want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("marker %d=%#v want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+// A task marker must not be resolved as a heading reference: `[*]` used to be
+// painted as a missing reference because only `x` was excluded.
+func TestTaskMarkerIsNotAHeadingReference(t *testing.T) {
+	root := t.TempDir()
+	s, _ := NewService(root)
+	uri := PathToURI(filepath.Join(root, "prompt.md"))
+	s.Documents.Open(uri, "- [*] custom\n- [x] done and [Real]\n# Real")
+
+	tokens := s.Semantic(uri)
+	// The item is split around the marker instead of overlapping it, and the
+	// real `[Real]` reference on the same line still resolves.
+	want := []SemanticToken{
+		{Line: 0, Start: 0, Length: 3, Kind: TokenPromptItem},
+		{Line: 0, Start: 3, Length: 1, Kind: TokenTaskMarker},
+		{Line: 0, Start: 4, Length: 8, Kind: TokenPromptItem},
+		{Line: 1, Start: 0, Length: 3, Kind: TokenPromptItem},
+		{Line: 1, Start: 3, Length: 1, Kind: TokenTaskDone},
+		{Line: 1, Start: 4, Length: 11, Kind: TokenPromptItem},
+		{Line: 1, Start: 15, Length: 6, Kind: TokenHeadingRef},
+		{Line: 2, Start: 0, Length: 1, Kind: TokenHeadingMarker},
+		{Line: 2, Start: 2, Length: 4, Kind: TokenHeading1},
+	}
+	if len(tokens) != len(want) {
+		t.Fatalf("tokens=%#v want %#v", tokens, want)
+	}
+	for i := range want {
+		if tokens[i] != want[i] {
+			t.Errorf("token %d=%#v want %#v", i, tokens[i], want[i])
+		}
+	}
+	for _, tok := range tokens {
+		if tok.Kind == TokenHeadingRefMissing {
+			t.Fatalf("task marker resolved as a missing reference: %#v", tok)
+		}
+	}
+}
+
+func TestScanTaskMarkerBoundaries(t *testing.T) {
+	for _, line := range []string{"-[*] no space", "see [x] inline", "- [ ] unchecked", "- [xy] not a marker", "- [x]y no gap", "text - [x]", "1. [x] ordered"} {
+		if _, ok := ScanTaskMarker(line); ok {
+			t.Errorf("unexpected task marker in %q", line)
+		}
+	}
+	for _, line := range []string{"- [x] ok", "  * [X] ok", "+\t[*] ok", "- [x]", "- [*]", "- [😀] astral"} {
+		if _, ok := ScanTaskMarker(line); !ok {
+			t.Errorf("missed task marker in %q", line)
+		}
+	}
+	if m, ok := ScanTaskMarker("- [x] ok"); !ok || m.Value != "x" || m.StartRune != 3 || m.StartUTF16 != 3 || m.EndUTF16 != 4 {
+		t.Errorf("done marker=%#v ok=%v", m, ok)
+	}
+	// An astral marker occupies one rune but two UTF-16 code units.
+	if m, ok := ScanTaskMarker("- [😀] ok"); !ok || m.StartRune != 3 || m.EndRune != 4 || m.StartUTF16 != 3 || m.EndUTF16 != 5 {
+		t.Errorf("astral marker=%#v ok=%v", m, ok)
+	}
+}
+
 func TestOpenSnapshotWinsOverDisk(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "prompt.md")

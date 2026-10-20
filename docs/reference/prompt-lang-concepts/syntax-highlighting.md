@@ -5,7 +5,7 @@
 The language is ordinary Markdown with a small prompt-oriented semantic layer. Its highlighting is best understood as two cooperating passes:
 
 1. **Structural highlighting** parses Markdown blocks and assigns stable, theme-oriented scopes to headings, paragraphs, lists, tables, links, code fences, and other markup.
-2. **Contextual highlighting** scans prompt documents for constructs whose meaning depends on the workspace or the current document: `@file` references, `[Heading]` references, ATX heading levels, and `-`/`*` prompt items.
+2. **Contextual highlighting** scans prompt documents for constructs whose meaning depends on the workspace or the current document: `@file` references, `[Heading]` references, ATX heading levels, `-`/`*` prompt items, and task-marker state.
 
 The second pass is not a replacement for the Markdown parser. It overlays narrower semantic ranges on broad structural ranges. A faithful implementation must give those narrower ranges precedence and must avoid emitting overlapping semantic ranges.
 
@@ -164,7 +164,21 @@ This behavior is intentionally narrower than Markdown list syntax:
 - nested prompt items work because arbitrary leading whitespace is accepted;
 - a marker without following whitespace is not an item;
 - continuation lines are not colored;
-- task items are colored as part of the line, while `[x]` and `[X]` are excluded from heading-reference recognition.
+- task items are colored as part of the line, while `[x]` and `[X]` are excluded from heading-reference recognition;
+- task markers are recognized positionally, only as the first bracketed value after a list marker;
+- the task-marker span is cut out of the prompt-item span rather than overlapping it;
+
+### Task markers
+
+A task marker opens a list item as `- [x] `, `* [*] `, or `+ [😀] `, where the item marker is `-`, `*`, or `+`, one or more spaces or a tab, and a single-character bracketed marker. Recognition is positional: the brackets must follow the list marker at the start of the line, so `see [x]` in running text is ordinary content and never a task marker.
+
+Only the inner character carries the token; the brackets keep the color of the line they belong to. `x` in any case emits `promptTaskDone`, and any other non-space marker emits `promptTaskMarker`. The terminal renderer maps these to ANSI standard gray (`SGR 90`) and yellow (`SGR 33`), so their exact colors come from the active terminal theme rather than fixed RGB values.
+
+An empty `[ ]` is an unchecked task and receives no token; neither does a bracketed value with more than one character or with no trailing whitespace. Ordered-list items are not recognized.
+
+The task-marker span is excluded from the enclosing prompt-item span, so a marked item emits two prompt-item ranges around one marker range instead of overlapping ranges. A task marker is never resolved as a heading reference. That holds for a custom marker such as `[*]` as well: without the exclusion it would be painted as a missing reference, since nothing else is likely to be named `*`.
+
+The structural pass colors the same span with the same roles, so a document rendered without contextual tokens keeps the task marker readable, and a task marker inside a fence or metadata block stays generic code or metadata styling.
 
 File or heading references inside a prompt item retain their own scopes. The item range is split around each reference.
 
@@ -218,9 +232,10 @@ To reproduce the feature in another editor or rendering host:
 6. Build the ATX-only heading stack, normalize bracket paths, and resolve exact current-document matches.
 7. Implement lexical exclusions for tasks, images, and immediate inline links.
 8. Apply the repeating heading palette and whole-line `-`/`*` item scopes.
-9. Split broad semantic ranges around references and enforce file-reference precedence on overlap.
+9. Split broad semantic ranges around references and task markers, and enforce file-reference precedence on overlap.
 10. Convert line offsets to the host's coordinate system, especially for non-ASCII prefixes.
 11. Refresh contextual colors after text edits and relevant filesystem changes.
 12. Test references inside headings, list items, fences, inline code, malformed brackets, duplicate headings, skipped heading levels, missing targets, and paths attempting to escape the workspace.
+13. Test task markers: `-`, `*`, and `+` items; `x`, `X`, and custom markers; unchecked `[ ]`; over-wide `[xy]`; markers without trailing whitespace; bracketed text away from the list marker; and coexistence with a reference on the same line.
 
 The key design principle is separation: Markdown supplies document structure and embedded-language boundaries, while the prompt layer adds workspace-aware and document-aware meaning. Keeping those passes independent, then composing their ranges deterministically, preserves both ordinary Markdown readability and prompt-specific feedback.

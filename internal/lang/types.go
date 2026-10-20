@@ -68,12 +68,15 @@ const (
 	TokenHeading6
 	TokenPromptItem
 	TokenPromptStarItem
+	TokenTaskDone
+	TokenTaskMarker
 )
 
 var SemanticLegend = []string{
 	"promptFile", "promptFileMissing", "promptHeadingReference", "promptHeadingReferenceMissing",
 	"promptHeadingMarker", "promptHeading1", "promptHeading2", "promptHeading3",
-	"promptHeading4", "promptHeading5", "promptHeading6", "promptItem", "promptStarItem",
+	"promptHeading4", "promptHeading5", "promptHeading6",
+	"promptItem", "promptStarItem", "promptTaskDone", "promptTaskMarker",
 }
 
 type SemanticToken struct {
@@ -93,4 +96,14 @@ type Reference struct {
 	StartUTF16, EndUTF16 int
 	Value                string
 	File                 bool
+}
+
+// TaskMarker is the inner character of a GFM task marker: the `x` of
+// `- [x]`, or a custom marker such as `*` in `- [*]`. The enclosing
+// brackets are never part of the range, so the brackets keep the color of
+// the surrounding line.
+type TaskMarker struct {
+	StartRune, EndRune   int
+	StartUTF16, EndUTF16 int
+	Value                string
 }

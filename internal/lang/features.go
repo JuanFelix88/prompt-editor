@@ -107,17 +107,21 @@ func (s *Service) Definition(uri string, pos Position) *Location {
 
 func headingTokenKind(level int) TokenKind { return TokenKind(int(TokenHeading1) + level - 1) }
 
-func addSplit(tokens *[]SemanticToken, line, start, end int, kind TokenKind, refs []Reference) {
+// cut is a UTF-16 range a broad token must not cover, so narrow reference
+// and task-marker tokens keep their own scopes.
+type cut struct{ start, end int }
+
+func addSplit(tokens *[]SemanticToken, line, start, end int, kind TokenKind, cuts []cut) {
 	cursor := start
-	for _, r := range refs {
-		if r.EndUTF16 <= start || r.StartUTF16 >= end {
+	for _, c := range cuts {
+		if c.end <= start || c.start >= end {
 			continue
 		}
-		a := r.StartUTF16
+		a := c.start
 		if a < start {
 			a = start
 		}
-		b := r.EndUTF16
+		b := c.end
 		if b > end {
 			b = end
 		}
@@ -178,15 +182,36 @@ func (s *Service) semantic(uri string, cachedStatus bool) []SemanticToken {
 		headingPaths[h.Path] = true
 	}
 	var tokens []SemanticToken
+	// Reused across lines: addSplit only reads it, so one growing slice keeps
+	// the per-line cost of task markers down to the scan itself.
+	var cuts []cut
 	for n, line := range lines {
 		var refs []Reference
 		if prompt {
 			refs = ScanReferences(line)
 			sort.Slice(refs, func(i, j int) bool { return refs[i].StartUTF16 < refs[j].StartUTF16 })
 		}
+		// A task marker is Markdown rather than a prompt construct, so it is
+		// recognized in every document and cuts broad ranges in any layer.
+		task, hasTask := ScanTaskMarker(line)
+		cuts = cuts[:0]
+		for _, r := range refs {
+			cuts = append(cuts, cut{r.StartUTF16, r.EndUTF16})
+		}
+		if hasTask {
+			cuts = append(cuts, cut{task.StartUTF16, task.EndUTF16})
+		}
+		// refs are already sorted, so only the task-marker cut can land out of
+		// order; sorting unconditionally would sort every line twice.
+		if hasTask && len(cuts) > 1 {
+			sort.Slice(cuts, func(i, j int) bool { return cuts[i].start < cuts[j].start })
+		}
 		if h, ok := headingByLine[n]; ok {
 			tokens = append(tokens, SemanticToken{Line: n, Start: h.MarkerUTF16, Length: h.Level, Kind: TokenHeadingMarker})
-			addSplit(&tokens, n, h.ContentStartUTF16, h.ContentEndUTF16, headingTokenKind(h.Level), refs)
+			addSplit(&tokens, n, h.ContentStartUTF16, h.ContentEndUTF16, headingTokenKind(h.Level), cuts)
+		}
+		if hasTask {
+			tokens = append(tokens, SemanticToken{Line: n, Start: task.StartUTF16, Length: task.EndUTF16 - task.StartUTF16, Kind: TaskMarkerKind(task.Value)})
 		}
 		if prompt {
 			rs := []rune(line)
@@ -199,7 +224,7 @@ func (s *Service) semantic(uri string, cachedStatus bool) []SemanticToken {
 				if rs[i] == '*' {
 					kind = TokenPromptStarItem
 				}
-				addSplit(&tokens, n, runeToUTF16(rs, i), UTF16Len(line), kind, refs)
+				addSplit(&tokens, n, runeToUTF16(rs, i), UTF16Len(line), kind, cuts)
 			}
 			for _, r := range refs {
 				kind := TokenHeadingRefMissing

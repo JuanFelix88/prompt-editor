@@ -33,6 +33,8 @@ promptHeading5
 promptHeading6
 promptItem
 promptStarItem
+promptTaskDone
+promptTaskMarker
 ```
 
 ## Lifecycle e transporte
